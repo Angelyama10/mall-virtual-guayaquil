@@ -1,0 +1,20 @@
+# env
+.env
+apps/api/.env
+
+# node
+node_modules
+**/node_modules
+
+# next
+.next
+
+# build
+dist
+build
+
+# prisma
+generated
+
+# mac
+.DS_Store

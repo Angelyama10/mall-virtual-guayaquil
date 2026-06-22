@@ -1,0 +1,119 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  MERCHANT
+  ADMIN
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      UserRole
+  createdAt DateTime @default(now())
+
+  merchantStores Store[]
+  carts          Cart[]
+  orders         Order[]
+}
+model Store {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  logo        String?
+  ownerId     String
+
+  owner        User          @relation(fields: [ownerId], references: [id])
+  branches     StoreBranch[]
+  products     Product[]
+  carts Cart[]
+}
+
+model StoreBranch {
+  id        String  @id @default(uuid())
+  storeId   String
+  name      String
+  address   String
+  latitude  Float
+  longitude Float
+  whatsapp  String
+
+  store Store @relation(fields: [storeId], references: [id])
+}
+
+model Category {
+  id       String    @id @default(uuid())
+  name     String    @unique
+  products Product[]
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  storeId     String
+  categoryId  String
+  name        String
+  description String?
+  price       Float
+  stock       Int
+
+  store    Store    @relation(fields: [storeId], references: [id])
+  category Category @relation(fields: [categoryId], references: [id])
+}
+model Cart {
+  id        String   @id @default(uuid())
+  userId    String
+  storeId   String
+  createdAt DateTime @default(now())
+
+  user  User      @relation(fields:[userId], references:[id])
+  store Store     @relation(fields:[storeId], references:[id])
+  items CartItem[]
+}
+model CartItem {
+  id        String @id @default(uuid())
+  cartId    String
+  productId String
+  quantity  Int
+
+  cart    Cart    @relation(fields:[cartId], references:[id])
+  product Product @relation(fields:[productId], references:[id])
+}
+enum OrderStatus {
+  PENDING
+  SENT_TO_WHATSAPP
+  PROCESSING
+  COMPLETED
+}
+model Order {
+  id          String      @id @default(uuid())
+  userId      String
+  branchId    String
+  total       Float
+  status      OrderStatus
+  createdAt   DateTime @default(now())
+
+  user   User        @relation(fields:[userId], references:[id])
+  branch StoreBranch @relation(fields:[branchId], references:[id])
+
+  items OrderItem[]
+}
+model OrderItem {
+  id        String @id @default(uuid())
+  orderId   String
+  productId String
+  quantity  Int
+  price     Float
+
+  order   Order   @relation(fields:[orderId], references:[id])
+  product Product @relation(fields:[productId], references:[id])
+}
