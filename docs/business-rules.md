@@ -1,33 +1,37 @@
 # Business Rules
 
-## Shopping Rules
+## Rule 1
 
-A customer can only purchase products from one store per cart.
+A customer can only purchase products from ONE store per cart.
 
-If the customer wants products from another store, a new cart is created.
+Reason:
 
-## Checkout Rules
+Each merchant processes orders independently.
 
-Checkout can happen through WhatsApp in MVP.
+## Rule 2
 
-Future version allows in-app payments.
+Each store may have multiple branches.
 
-## Delivery Rules
+The system automatically selects nearest branch based on GPS.
 
-Each merchant manages delivery independently during MVP.
+## Rule 3
 
-Future versions may integrate platform delivery.
+Initial MVP checkout uses WhatsApp redirection.
 
-## Order Rules
+No internal payment processing.
 
-Each order belongs to exactly one store.
+## Rule 4
 
-Orders cannot contain products from multiple stores.
+Internal payment gateway will be introduced in phase 2.
 
-## Monetization Rules
+## Rule 5
 
-Seed Plan → 15 products max
+Delivery module will be internal in future releases.
 
-Entrepreneur Plan → Unlimited products
+## Rule 6
 
-Premium Plan → Featured placement and promotions
+Store owners can manage only their own products.
+
+## Rule 7
+
+Admin approves merchant registration before publication.

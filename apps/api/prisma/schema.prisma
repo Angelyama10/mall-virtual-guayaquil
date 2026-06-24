@@ -8,112 +8,266 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+//////////////////////////////////////////////////////
+// ENUMS
+//////////////////////////////////////////////////////
+
 enum UserRole {
   CUSTOMER
   MERCHANT
   ADMIN
 }
 
+enum OrderStatus {
+  PENDING
+  SENT_TO_WHATSAPP
+  CONFIRMED
+  PROCESSING
+  READY
+  ON_THE_WAY
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum DeliveryStatus {
+  WAITING
+  ASSIGNED
+  PICKED_UP
+  DELIVERED
+}
+
+//////////////////////////////////////////////////////
+// USER
+//////////////////////////////////////////////////////
+
 model User {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  password  String
-  role      UserRole
-  createdAt DateTime @default(now())
+  id          String   @id @default(uuid())
+  name        String
+  email       String   @unique
+  password    String
+  phone       String?
+  role        UserRole
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   merchantStores Store[]
   carts          Cart[]
   orders         Order[]
+  addresses      Address[]
 }
+
+//////////////////////////////////////////////////////
+// STORE
+//////////////////////////////////////////////////////
+
 model Store {
   id          String   @id @default(uuid())
+  ownerId     String
   name        String
   description String?
   logo        String?
-  ownerId     String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  owner        User          @relation(fields: [ownerId], references: [id])
+  owner        User            @relation(fields: [ownerId], references: [id])
   branches     StoreBranch[]
   products     Product[]
-  carts Cart[]
+  orders       Order[]
+  analytics    StoreAnalytics[]
 }
+
+//////////////////////////////////////////////////////
+// STORE BRANCH
+//////////////////////////////////////////////////////
 
 model StoreBranch {
-  id        String  @id @default(uuid())
-  storeId   String
-  name      String
-  address   String
-  latitude  Float
-  longitude Float
-  whatsapp  String
+  id          String   @id @default(uuid())
+  storeId      String
+  name         String
+  address      String
+  latitude      Float
+  longitude     Float
+  whatsapp      String
+  isActive      Boolean @default(true)
 
-  store Store @relation(fields: [storeId], references: [id])
+  store         Store @relation(fields: [storeId], references: [id])
+  orders        Order[]
 }
+
+//////////////////////////////////////////////////////
+// CATEGORY
+//////////////////////////////////////////////////////
 
 model Category {
-  id       String    @id @default(uuid())
-  name     String    @unique
-  products Product[]
+  id          String   @id @default(uuid())
+  name        String   @unique
+  slug        String   @unique
+
+  products    Product[]
 }
+
+//////////////////////////////////////////////////////
+// PRODUCT
+//////////////////////////////////////////////////////
 
 model Product {
-  id          String   @id @default(uuid())
-  storeId     String
-  categoryId  String
-  name        String
-  description String?
-  price       Float
-  stock       Int
+  id           String   @id @default(uuid())
+  storeId      String
+  categoryId   String
+  name         String
+  description  String?
+  price        Decimal  @db.Decimal(10,2)
+  stock        Int
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
 
-  store    Store    @relation(fields: [storeId], references: [id])
-  category Category @relation(fields: [categoryId], references: [id])
+  store        Store @relation(fields: [storeId], references: [id])
+  category     Category @relation(fields: [categoryId], references: [id])
+
+  images       ProductImage[]
+  cartItems    CartItem[]
+  orderItems   OrderItem[]
 }
-model Cart {
-  id        String   @id @default(uuid())
-  userId    String
-  storeId   String
-  createdAt DateTime @default(now())
 
-  user  User      @relation(fields:[userId], references:[id])
-  store Store     @relation(fields:[storeId], references:[id])
-  items CartItem[]
-}
-model CartItem {
-  id        String @id @default(uuid())
-  cartId    String
-  productId String
-  quantity  Int
+//////////////////////////////////////////////////////
+// PRODUCT IMAGE
+//////////////////////////////////////////////////////
 
-  cart    Cart    @relation(fields:[cartId], references:[id])
+model ProductImage {
+  id          String @id @default(uuid())
+  productId   String
+  url         String
+
   product Product @relation(fields:[productId], references:[id])
 }
-enum OrderStatus {
-  PENDING
-  SENT_TO_WHATSAPP
-  PROCESSING
-  COMPLETED
-}
-model Order {
-  id          String      @id @default(uuid())
+
+//////////////////////////////////////////////////////
+// CART
+//////////////////////////////////////////////////////
+
+model Cart {
+  id          String   @id @default(uuid())
   userId      String
-  branchId    String
-  total       Float
-  status      OrderStatus
+  storeId     String
   createdAt   DateTime @default(now())
 
-  user   User        @relation(fields:[userId], references:[id])
-  branch StoreBranch @relation(fields:[branchId], references:[id])
+  user        User @relation(fields:[userId], references:[id])
+  store       Store @relation(fields:[storeId], references:[id])
 
-  items OrderItem[]
+  items       CartItem[]
 }
-model OrderItem {
-  id        String @id @default(uuid())
-  orderId   String
-  productId String
-  quantity  Int
-  price     Float
 
-  order   Order   @relation(fields:[orderId], references:[id])
-  product Product @relation(fields:[productId], references:[id])
+//////////////////////////////////////////////////////
+// CART ITEM
+//////////////////////////////////////////////////////
+
+model CartItem {
+  id          String @id @default(uuid())
+  cartId      String
+  productId   String
+  quantity    Int
+
+  cart        Cart @relation(fields:[cartId], references:[id])
+  product     Product @relation(fields:[productId], references:[id])
+}
+
+//////////////////////////////////////////////////////
+// ORDER
+//////////////////////////////////////////////////////
+
+model Order {
+  id             String @id @default(uuid())
+  userId         String
+  storeId        String
+  branchId       String
+  total          Decimal @db.Decimal(10,2)
+  status         OrderStatus
+  createdAt      DateTime @default(now())
+
+  user           User @relation(fields:[userId], references:[id])
+  store          Store @relation(fields:[storeId], references:[id])
+  branch         StoreBranch @relation(fields:[branchId], references:[id])
+
+  items          OrderItem[]
+  payment        Payment?
+  delivery       Delivery?
+}
+
+//////////////////////////////////////////////////////
+// ORDER ITEM
+//////////////////////////////////////////////////////
+
+model OrderItem {
+  id          String @id @default(uuid())
+  orderId     String
+  productId   String
+  quantity    Int
+  price       Decimal @db.Decimal(10,2)
+
+  order       Order @relation(fields:[orderId], references:[id])
+  product     Product @relation(fields:[productId], references:[id])
+}
+
+//////////////////////////////////////////////////////
+// ADDRESS
+//////////////////////////////////////////////////////
+
+model Address {
+  id          String @id @default(uuid())
+  userId      String
+  address     String
+  latitude    Float
+  longitude   Float
+
+  user User @relation(fields:[userId], references:[id])
+}
+
+//////////////////////////////////////////////////////
+// PAYMENT
+//////////////////////////////////////////////////////
+
+model Payment {
+  id            String @id @default(uuid())
+  orderId        String @unique
+  amount         Decimal @db.Decimal(10,2)
+  provider       String?
+  status         PaymentStatus
+
+  order Order @relation(fields:[orderId], references:[id])
+}
+
+//////////////////////////////////////////////////////
+// DELIVERY
+//////////////////////////////////////////////////////
+
+model Delivery {
+  id             String @id @default(uuid())
+  orderId        String @unique
+  driverName     String?
+  driverPhone    String?
+  status         DeliveryStatus
+
+  order Order @relation(fields:[orderId], references:[id])
+}
+
+//////////////////////////////////////////////////////
+// ANALYTICS
+//////////////////////////////////////////////////////
+
+model StoreAnalytics {
+  id              String @id @default(uuid())
+  storeId         String
+  profileViews    Int @default(0)
+  productClicks   Int @default(0)
+  whatsappClicks  Int @default(0)
+
+  store Store @relation(fields:[storeId], references:[id])
 }
