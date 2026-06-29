@@ -1,32 +1,126 @@
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  MALL VIRTUAL GUAYAQUIL — Production Schema v5.0  (DEFINITIVE)         ║
+// ║  Stack: PostgreSQL + Supabase + Prisma ORM                             ║
+// ╠══════════════════════════════════════════════════════════════════════════╣
+// ║  DOMINIOS (13)                                                          ║
+// ║  01. SEGURIDAD      ServerErrorCode · ErrorLog · AuditLog              ║
+// ║                     RateLimitLog · LoginAttempt · VerificationToken    ║
+// ║                     TwoFactorAuth · TokenBlacklist · Permission/RBAC   ║
+// ║  02. PLATAFORMA     Country · PlatformConfig · Banner                  ║
+// ║  03. IDENTIDAD      User · CustomerProfile · UserSession               ║
+// ║                     RefreshToken                                        ║
+// ║  04. COMERCIO       MerchantProfile → MerchantCompany → Store          ║
+// ║                     StoreAddress · StoreSettings                       ║
+// ║  05. CATÁLOGO       Category (árbol) → Product → ProductVariant        ║
+// ║                     → ProductImage · Inventory (por sucursal)          ║
+// ║  06. FAVORITOS      Favorite (producto + tienda)                       ║
+// ║  07. PROMOCIONES    Promotion · PromotionUse                           ║
+// ║  08. CARRITO        Cart · CartItem (multi-tienda preparado)           ║
+// ║  09. ÓRDENES        Order · OrderItem · OrderStatusHistory             ║
+// ║  10. PAGOS          PaymentGateway · PaymentGatewayCountry · Payment   ║
+// ║  11. LOGÍSTICA      DriverProfile · Delivery · DeliveryAssignment      ║
+// ║  12. FINANZAS       Wallet · LedgerEntry · TransactionLedger           ║
+// ║  13. PLATAFORMA+    Review · SearchHistory · SupportTicket             ║
+// ║                     AnalyticsEvent · StoreAnalyticsSnapshot            ║
+// ║                     Notification · Plan · Subscription                 ║
+// ╠══════════════════════════════════════════════════════════════════════════╣
+// ║  SEGURIDAD (7 capas)                                                    ║
+// ║  S1. Errores opacos      ServerErrorCode + ErrorLog                    ║
+// ║  S2. Trazabilidad        AuditLog inmutable (solo INSERT)              ║
+// ║  S3. Anti brute-force    RateLimitLog + LoginAttempt                   ║
+// ║  S4. Tokens hasheados    VerificationToken SHA-256 + propósito tipado  ║
+// ║  S5. 2FA TOTP            TwoFactorAuth AES-256-GCM + BCrypt backups    ║
+// ║  S6. JWT + RefreshToken  TokenBlacklist jti + RefreshToken rotante     ║
+// ║  S7. RBAC granular       Permission + RolePermission + UserPermission  ║
+// ╠══════════════════════════════════════════════════════════════════════════╣
+// ║  DECISIONES CLAVE                                                       ║
+// ║  · MerchantCompany reemplaza Brand — jerarquía inequívoca              ║
+// ║  · StoreAddress normalizada — soporta cualquier país                   ║
+// ║  · Inventory por (variantId × storeId) — stock real por sucursal       ║
+// ║  · reservedStock en Inventory — previene overselling                   ║
+// ║  · Category self-referencial — árbol infinito de sub-categorías        ║
+// ║  · ProductVariant — talla/color/capacidad sin duplicar productos       ║
+// ║  · CartItem sin storeId hard — validación multi-tienda en servicio     ║
+// ║  · DeliveryAssignment — reasignación y auditoría por pedido            ║
+// ║  · Wallet + LedgerEntry — saldo rastreable, inmutable                  ║
+// ║  · TransactionLedger — comisión por orden: bruto/fee/neto              ║
+// ║  · Review con CHECK XOR: storeId O productId, nunca ambos ni ninguno  ║
+// ║  · Favorite para productos Y tiendas                                   ║
+// ║  · RefreshToken rotante para app móvil                                 ║
+// ║  · PaymentGateway agnóstico: global + regional sin hardcode            ║
+// ║  · Decimal(10,7) en coords GPS — PostGIS-preparado                    ║
+// ║  · Soft delete en toda entidad crítica                                 ║
+// ╠══════════════════════════════════════════════════════════════════════════╣
+// ║  NOTA ARQUITECTÓNICA:                                                   ║
+// ║  Este schema persiste estado únicamente.                                ║
+// ║  La lógica de negocio vive en:                                         ║
+// ║    src/domain/     → reglas puras sin I/O                              ║
+// ║    src/use-cases/  → flujos: checkout, refund, assignDriver            ║
+// ║    src/services/   → orquestación + efectos secundarios               ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
-
-//////////////////////////////////////////////////////
+// ══════════════════════════════════════════════════════════════════════════
 // ENUMS
-//////////////////////////////////////////////////////
+// ══════════════════════════════════════════════════════════════════════════
 
 enum UserRole {
   CUSTOMER
   MERCHANT
+  DRIVER
   ADMIN
+  SUPER_ADMIN
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum StoreStatus {
+  PENDING_REVIEW  // esperando aprobación del super-admin
+  ACTIVE          // visible y operable en el mall
+  SUSPENDED       // suspendida por incumplimiento
+  PAUSED          // pausada voluntariamente
+  REJECTED        // rechazada; motivo en AuditLog
+}
+
+enum ProductStatus {
+  DRAFT        // solo visible para el comercio
+  ACTIVE       // publicado y comprable
+  OUT_OF_STOCK // visible pero no comprable
+  ARCHIVED     // retirado permanentemente
 }
 
 enum OrderStatus {
   PENDING
-  SENT_TO_WHATSAPP
+  SENT_TO_WHATSAPP  // MVP: resumen enviado a WhatsApp
   CONFIRMED
   PROCESSING
-  READY
+  READY_FOR_PICKUP
   ON_THE_WAY
   DELIVERED
   CANCELLED
+  REFUNDED
+}
+
+enum CancellationReason {
+  OUT_OF_STOCK
+  CUSTOMER_REQUEST
+  MERCHANT_CLOSED
+  PAYMENT_FAILED
+  FRAUD_SUSPICION
+  DELIVERY_FAILED
+  OTHER
 }
 
 enum PaymentStatus {
@@ -34,240 +128,1640 @@ enum PaymentStatus {
   PAID
   FAILED
   REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+// QUÉ instrumento usa el cliente — agnóstico de país y proveedor.
+// El proveedor concreto (Stripe, Payphone, Wompi…) vive en PaymentGateway.
+enum PaymentMethod {
+  // ── MVP ──────────────────────────────────────────────
+  WHATSAPP_TRANSFER   // coordinado manualmente (MVP)
+  CASH_ON_DELIVERY    // efectivo al entregar
+
+  // ── Transferencia bancaria ────────────────────────────
+  BANK_TRANSFER       // transferencia manual o SPEI (MX) / PSE (CO)
+
+  // ── Tarjetas ─────────────────────────────────────────
+  CREDIT_CARD         // Visa / Mastercard / Amex / Diners (cualquier país)
+  DEBIT_CARD
+
+  // ── Billeteras digitales ──────────────────────────────
+  DIGITAL_WALLET      // Apple Pay · Google Pay · Samsung Pay
+  PAYPAL              // global
+
+  // ── QR / pago móvil regional ─────────────────────────
+  QR_CODE             // Yape(PE) · Nequi(CO) · Sinpe(CR) · Bizum(ES)
+                      // Pix(BR) · PromptPay(TH) — cualquier QR local
+  // ── Efectivo en punto físico ─────────────────────────
+  CASH_VOUCHER        // OXXO(MX) · Rapipago(AR) · PagoEfectivo(PE)
+
+  // ── Cuotas / financiamiento ──────────────────────────
+  INSTALLMENTS        // Adyen · Aplazame · Kueski (varía por país)
+  BUY_NOW_PAY_LATER   // Klarna · Afterpay · Kueski Pay
+
+  // ── Criptomonedas (futuro) ───────────────────────────
+  CRYPTO
+}
+
+enum DeliveryType {
+  PICKUP        // el cliente recoge en tienda
+  HOME_DELIVERY
+  EXPRESS       // entrega < 2h
 }
 
 enum DeliveryStatus {
-  WAITING
-  ASSIGNED
+  WAITING_DRIVER
+  DRIVER_ASSIGNED
   PICKED_UP
+  ON_THE_WAY
   DELIVERED
+  FAILED
 }
 
-//////////////////////////////////////////////////////
-// USER
-//////////////////////////////////////////////////////
+enum AssignmentStatus {
+  OFFERED     // ofrecido al driver, esperando respuesta
+  ACCEPTED
+  REJECTED    // rechazado; se buscará otro driver
+  CANCELLED   // cancelado por el sistema o admin
+  COMPLETED
+  FAILED
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE   // pago fallido, en período de gracia
+  CANCELLED
+  EXPIRED
+}
+
+enum BillingCycle {
+  MONTHLY
+  ANNUAL
+}
+
+enum BannerPosition {
+  HOME_TOP
+  HOME_MID
+  CATEGORY_TOP
+  SEARCH_TOP
+}
+
+enum NotificationChannel {
+  PUSH
+  EMAIL
+  SMS
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+enum AnalyticsEventType {
+  STORE_VIEW
+  PRODUCT_VIEW
+  PRODUCT_CLICK
+  WHATSAPP_CLICK
+  CART_ADD
+  CART_REMOVE
+  ORDER_STARTED
+  ORDER_COMPLETED
+  SEARCH_PERFORMED
+  PROMO_CLICK
+  PROMOTION_APPLIED
+  FAVORITE_ADDED
+  FAVORITE_REMOVED
+}
+
+enum DriverStatus {
+  OFFLINE
+  AVAILABLE
+  BUSY
+  SUSPENDED
+}
+
+enum TokenPurpose {
+  EMAIL_VERIFICATION
+  PHONE_VERIFICATION
+  PASSWORD_RESET
+  MERCHANT_INVITE
+  ACCOUNT_DELETION
+}
+
+enum LoginOutcome {
+  SUCCESS
+  WRONG_PASSWORD
+  ACCOUNT_NOT_FOUND
+  ACCOUNT_LOCKED
+  ACCOUNT_UNVERIFIED
+  TWO_FACTOR_REQUIRED
+  TWO_FACTOR_FAILED
+  RATE_LIMITED
+}
+
+enum DiscountType {
+  PERCENTAGE    // 20% de descuento
+  FIXED_AMOUNT  // $5 de descuento
+  FREE_SHIPPING
+  BUY_X_GET_Y
+}
+
+enum PromotionScope {
+  PLATFORM  // toda la plataforma
+  STORE
+  PRODUCT
+  CATEGORY
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_USER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// Tipo de movimiento financiero en el Ledger
+enum LedgerEntryType {
+  ORDER_REVENUE       // ingreso bruto por orden
+  PLATFORM_COMMISSION // comisión de la plataforma
+  DELIVERY_FEE        // cobro de envío
+  REFUND_DEBIT        // descuento por reembolso
+  PAYOUT              // retiro del comercio
+  ADJUSTMENT          // ajuste manual por admin
+  SUBSCRIPTION_FEE    // cobro de suscripción
+}
+
+// Tipo de favorito
+enum FavoriteType {
+  PRODUCT
+  STORE
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SEGURIDAD — S1: Errores opacos al cliente
+//
+// Flujo: error → ErrorLog (interno) → servidor responde { errorCode }
+// → cliente muestra publicMessage. Nunca stack traces ni mensajes de DB.
+//
+// Dominios de errorCode:
+//   AUTH_xxx     → autenticación, sesiones, 2FA, tokens
+//   USER_xxx     → perfil de usuario
+//   MERCHANT_xxx → empresas y tiendas
+//   CATALOG_xxx  → productos, variantes, inventario
+//   CART_xxx     → carrito de compras
+//   ORDER_xxx    → pedidos y estados
+//   PAYMENT_xxx  → pagos y pasarelas
+//   DELIVERY_xxx → logística y repartidores
+//   WALLET_xxx   → billetera y ledger
+//   SUB_xxx      → suscripciones
+//   PROMO_xxx    → promociones y descuentos
+//   SUPPORT_xxx  → tickets de soporte
+//   ADMIN_xxx    → panel de administración
+//   SYS_xxx      → errores internos del sistema
+// ══════════════════════════════════════════════════════════════════════════
+
+model ServerErrorCode {
+  code            String   @id        // "AUTH_001", "ORDER_005"
+  httpStatus      Int                  // 400 401 403 404 409 422 500
+  publicMessage   String               // seguro en inglés
+  publicMessageEs String               // seguro en español
+  internalNote    String?              // nota técnica — solo devs
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  @@map("server_error_codes")
+}
+
+model ErrorLog {
+  id            String   @id @default(uuid())
+  errorCode     String   // FK lógica a ServerErrorCode.code
+  message       String   // descripción INTERNA — nunca al cliente
+  stack         String?  // stack trace — solo devs
+  context       Json?    // payload / headers / params
+  userId        String?
+  requestPath   String?
+  requestMethod String?
+  statusCode    Int?
+  resolved      Boolean  @default(false)
+  resolvedAt    DateTime?
+  resolvedBy    String?
+  createdAt     DateTime @default(now())
+
+  @@index([errorCode])
+  @@index([resolved, createdAt])
+  @@index([userId, createdAt])
+  @@map("error_logs")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SEGURIDAD — S2: AuditLog inmutable
+// Solo INSERT. Nunca UPDATE ni DELETE. El log es sagrado.
+// ══════════════════════════════════════════════════════════════════════════
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?  // null = acción del sistema (cron, webhook)
+  userRole   String?  // snapshot del rol en el momento
+  action     String   // "USER_LOGIN", "ADMIN_SUSPENDED_STORE"
+  entityType String   // "User", "Order", "Store", "Payment"
+  entityId   String
+  oldValue   Json?    // snapshot ANTES
+  newValue   Json?    // snapshot DESPUÉS
+  ipAddress  String?
+  userAgent  String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([entityType, entityId])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SEGURIDAD — S3: Anti brute-force y DoS
+// ══════════════════════════════════════════════════════════════════════════
+
+model RateLimitLog {
+  id           String   @id @default(uuid())
+  identifier   String   // IP, userId, o "ip:userId"
+  endpoint     String   // "/api/v1/auth/login"
+  requestCount Int      @default(1)
+  windowStart  DateTime
+  windowEnd    DateTime
+  blocked      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([identifier, endpoint, windowStart])
+  @@index([identifier, endpoint, windowStart])
+  @@index([blocked, windowEnd])
+  @@map("rate_limit_logs")
+}
+
+model LoginAttempt {
+  id                String       @id @default(uuid())
+  email             String
+  outcome           LoginOutcome
+  ipAddress         String?
+  userAgent         String?
+  deviceFingerprint String?      // hash del dispositivo
+  countryCode       String?      // geo de la IP
+  city              String?
+  createdAt         DateTime     @default(now())
+
+  @@index([email, createdAt])
+  @@index([ipAddress, createdAt])
+  @@index([outcome, createdAt])
+  @@map("login_attempts")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SEGURIDAD — S4: Tokens de verificación (SHA-256, un solo uso)
+// ══════════════════════════════════════════════════════════════════════════
+
+model VerificationToken {
+  id        String       @id @default(uuid())
+  userId    String
+  tokenHash String       // SHA-256 del token real — NUNCA en plano
+  purpose   TokenPurpose
+  expiresAt DateTime
+  usedAt    DateTime?
+  ipAddress String?
+  createdAt DateTime     @default(now())
+
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
+  @@index([userId, purpose])
+  @@index([expiresAt])
+  @@map("verification_tokens")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SEGURIDAD — S5: 2FA TOTP (RFC 6238)
+// secretEncrypted: AES-256-GCM. backupCodesHash: BCrypt por código.
+// ══════════════════════════════════════════════════════════════════════════
+
+model TwoFactorAuth {
+  id              String    @id @default(uuid())
+  userId          String    @unique
+  secretEncrypted String    // ⚠ AES-256-GCM antes de persistir
+  backupCodesHash String[]  // BCrypt individual por código de respaldo
+  isEnabled       Boolean   @default(false)
+  enabledAt       DateTime?
+  lastUsedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("two_factor_auth")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SEGURIDAD — S6a: JWT Blacklist por jti
+// Cron nightly elimina registros con expiresAt vencido.
+// ══════════════════════════════════════════════════════════════════════════
+
+model TokenBlacklist {
+  id        String   @id @default(uuid())
+  jti       String   @unique  // JWT ID del access token
+  userId    String            // para revocar TODOS los tokens de un usuario
+  reason    String?           // "LOGOUT", "PASSWORD_CHANGED", "ADMIN_REVOKED"
+  expiresAt DateTime          // cuándo hubiera expirado — para limpieza
+  createdAt DateTime @default(now())
+
+  @@index([jti])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("token_blacklist")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SEGURIDAD — S6b: RefreshToken rotante (app móvil)
+//
+// La app móvil necesita AccessToken (corto: 15min) + RefreshToken (largo:
+// 30 días). Al renovar: el refreshToken anterior se revoca y se emite uno
+// nuevo (rotación). Si se detecta uso de un token ya rotado → posible
+// robo de sesión → revocar TODA la familia.
+// ══════════════════════════════════════════════════════════════════════════
+
+model RefreshToken {
+  id          String    @id @default(uuid())
+  userId      String
+  tokenHash   String    @unique  // SHA-256 del token — NUNCA en plano
+  familyId    String             // agrupa rotaciones del mismo origen de sesión
+  deviceInfo  String?
+  deviceType  String?            // "mobile", "desktop", "tablet"
+  ipAddress   String?
+  userAgent   String?
+  expiresAt   DateTime
+  usedAt      DateTime?          // null = no usado aún
+  revokedAt   DateTime?          // revocado por logout / rotación / compromiso
+  revokedReason String?          // "ROTATION", "LOGOUT", "FAMILY_COMPROMISED"
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
+  @@index([userId, familyId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SEGURIDAD — S7: RBAC granular
+// Permission.code: "orders:read", "store:suspend", "analytics:export"
+// ══════════════════════════════════════════════════════════════════════════
+
+model Permission {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  description String?
+  resource    String   // "orders", "products", "stores"
+  action      String   // "read", "create", "update", "delete", "export"
+  createdAt   DateTime @default(now())
+
+  rolePermissions UserRolePermission[]
+  userPermissions UserPermission[]
+
+  @@index([resource, action])
+  @@map("permissions")
+}
+
+model UserRolePermission {
+  id           String     @id @default(uuid())
+  role         UserRole
+  permissionId String
+  grantedBy    String?
+  createdAt    DateTime   @default(now())
+
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([role, permissionId])
+  @@map("user_role_permissions")
+}
+
+model UserPermission {
+  id           String     @id @default(uuid())
+  userId       String
+  permissionId String
+  granted      Boolean    // true = extra; false = revocado del rol
+  grantedBy    String?
+  expiresAt    DateTime?
+  reason       String?
+  createdAt    DateTime   @default(now())
+
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionId])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("user_permissions")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// DOMINIO 02 — PLATAFORMA
+// Country: configuración por país — sin tocar código al expandir.
+// ══════════════════════════════════════════════════════════════════════════
+
+model Country {
+  id             String   @id @default(uuid())
+  name           String   @unique        // "Ecuador", "Colombia", "México"
+  code           String   @unique        // ISO 3166-1 alpha-2: "EC" "CO" "MX"
+  currencyCode   String                  // ISO 4217: "USD" "COP" "MXN"
+  currencySymbol String                  // "$" "S/" "Q"
+  phonePrefix    String                  // "+593" "+57" "+52"
+  phoneFormat    String?                 // "(##) ####-####"
+  taxRate        Decimal  @db.Decimal(5,4) // 0.1200 = 12% IVA Ecuador
+  taxLabel       String?                 // "IVA" "IGV" "ISR" "IVA/IVA"
+  timezone       String                  // "America/Guayaquil"
+  dateFormat     String   @default("DD/MM/YYYY")
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  stores          Store[]
+  storeAddresses  StoreAddress[]
+  addresses       Address[]
+  paymentGateways PaymentGatewayCountry[]
+
+  @@index([code])
+  @@map("countries")
+}
+
+model PlatformConfig {
+  key         String   @id   // "platform.commission_pct" "feature.crypto"
+  value       String
+  description String?
+  isPublic    Boolean  @default(false)
+  updatedBy   String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("platform_config")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// DOMINIO 03 — IDENTIDAD
+// ══════════════════════════════════════════════════════════════════════════
 
 model User {
-  id          String   @id @default(uuid())
-  name        String
-  email       String   @unique
-  password    String
-  phone       String?
-  role        UserRole
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                String    @id @default(uuid())
+  email             String    @unique
+  phone             String?   @unique
+  passwordHash      String    // BCrypt cost >= 12 (nunca guardar texto plano)
 
-  merchantStores Store[]
-  carts          Cart[]
-  orders         Order[]
-  addresses      Address[]
+  role              UserRole  @default(CUSTOMER)
+
+  // Estado de cuenta
+  isVerified        Boolean   @default(false)
+  isPhoneVerified   Boolean   @default(false)
+  isActive          Boolean   @default(true)
+  isSuspended       Boolean   @default(false)
+
+  suspendedAt       DateTime?
+  suspendedReason   String?
+
+  // Seguridad
+  failedLoginCount  Int       @default(0)
+  lockedUntil       DateTime?
+  lastLoginAt       DateTime?
+  lastLoginIp       String?
+  passwordChangedAt DateTime?
+
+  // Auditoría
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // ============================================
+  // PROFILES (1:1 según tipo de usuario)
+  // ============================================
+
+  profile           CustomerProfile?
+  merchantProfile   MerchantProfile?
+  driverProfile     DriverProfile?
+
+  // ============================================
+  // AUTH / SECURITY
+  // ============================================
+
+  sessions           UserSession[]
+  refreshTokens      RefreshToken[]
+  verificationTokens VerificationToken[]
+  twoFactorAuth      TwoFactorAuth?
+  userPermissions    UserPermission[]
+
+  // ============================================
+  // CUSTOMER OPERATIONS
+  // ============================================
+
+  carts              Cart[]
+  orders             Order[]
+  addresses          Address[]
+  favorites          Favorite[]
+  reviews            Review[]
+  searchHistory      SearchHistory[]
+
+  // ============================================
+  // PROMOTIONS / MARKETING
+  // ============================================
+
+  promotionUses      PromotionUse[]
+
+  // ============================================
+  // COMMUNICATION
+  // ============================================
+
+  notifications      Notification[]
+  supportTickets     SupportTicket[]
+
+  // ============================================
+  // INDEXES
+  // ============================================
+
+  @@index([email])
+  @@index([phone])
+  @@index([role, isActive])
+  @@index([lockedUntil])
+  @@index([deletedAt])
+
+  @@map("users")
 }
 
-//////////////////////////////////////////////////////
-// STORE
-//////////////////////////////////////////////////////
+model CustomerProfile {
+  id        String    @id @default(uuid())
+  userId    String    @unique
+  firstName String
+  lastName  String
+  avatarUrl String?
+  birthdate DateTime?
+  gender    Gender?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
-model Store {
-  id          String   @id @default(uuid())
-  ownerId     String
-  name        String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("customer_profiles")
+}
+
+model UserSession {
+  id            String    @id @default(uuid())
+  userId        String
+  jti           String    @unique  // JWT ID del access token
+  deviceInfo    String?
+  deviceType    String?
+  ipAddress     String?
+  userAgent     String?
+  countryCode   String?
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  revokedReason String?
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([jti])
+  @@map("user_sessions")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// DOMINIO 04 — COMERCIO
+//
+// MerchantProfile  → quién eres legalmente (persona o empresa)
+//   └── MerchantCompany → tu entidad comercial ("Nike Ecuador S.A.")
+//         └── Store       → tu sucursal ("Nike Mall del Sol")
+//               ├── StoreAddress  → dirección normalizada
+//               └── StoreSettings → config operativa
+//
+// La suscripción va en MerchantCompany, no en Store.
+// ══════════════════════════════════════════════════════════════════════════
+
+model MerchantProfile {
+  id            String    @id @default(uuid())
+  userId        String    @unique
+  taxId         String?   @unique  // RUC(EC) NIT(CO) RFC(MX) RUT(CL)
+  taxIdCountry  String?            // ISO 3166-1 del país del taxId
+  contactEmail  String
+  contactPhone  String
+  isVerified    Boolean   @default(false)
+  verifiedAt    DateTime?
+  verifiedBy    String?            // userId del admin que verificó
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companies MerchantCompany[]
+
+  @@index([deletedAt])
+  @@map("merchant_profiles")
+}
+
+model MerchantCompany {
+  id          String    @id @default(uuid())
+  merchantId  String
+  name        String                   // "Nike Ecuador"
+  slug        String    @unique
   description String?
-  logo        String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  logoUrl     String?
+  coverUrl    String?
+  website     String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
 
-  owner        User            @relation(fields: [ownerId], references: [id])
-  branches     StoreBranch[]
-  products     Product[]
-  orders       Order[]
-  analytics    StoreAnalytics[]
+  merchant      MerchantProfile @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  stores        Store[]
+  subscriptions Subscription[]
+  wallet        Wallet?
+
+  @@index([slug])
+  @@index([merchantId, isActive])
+  @@index([deletedAt])
+  @@map("merchant_companies")
 }
 
-//////////////////////////////////////////////////////
-// STORE BRANCH
-//////////////////////////////////////////////////////
+// Store = una sucursal o punto de venta.
+// GPS: Decimal(10,7) — precisión ~1.1cm. NUNCA Float.
+// PostGIS al escalar:
+//   Agregar columna: location Unsupported("geography(Point,4326)")?
+//   e índice: @@index([location], type: Gist)
+//   para ST_DWithin en búsqueda de proximidad de alto rendimiento.
+model Store {
+  id           String      @id @default(uuid())
+  companyId    String
+  countryId    String?
+  name         String                           // "Nike Mall del Sol"
+  slug         String      @unique
+  status       StoreStatus @default(PENDING_REVIEW)
+  openingHours Json?       // { "mon":"09:00-18:00", "sun":null }
+  isOpen       Boolean     @default(false)      // actualizable en tiempo real
+  averageRating Decimal    @db.Decimal(3,2) @default(0)
+  reviewCount   Int        @default(0)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  deletedAt     DateTime?
 
-model StoreBranch {
-  id          String   @id @default(uuid())
-  storeId      String
-  name         String
-  address      String
-  latitude      Float
-  longitude     Float
-  whatsapp      String
-  isActive      Boolean @default(true)
+  company            MerchantCompany        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  country            Country?               @relation(fields: [countryId], references: [id])
+  address            StoreAddress?
+  settings           StoreSettings?
+  products           Product[]
+  inventory          Inventory[]
+  orders             Order[]
+  reviews            Review[]
+  favorites          Favorite[]
+  promotions         Promotion[]
+  analyticsEvents    AnalyticsEvent[]
+  analyticsSnapshots StoreAnalyticsSnapshot[]
+  banners            Banner[]
+  supportTickets     SupportTicket[]
 
-  store         Store @relation(fields: [storeId], references: [id])
-  orders        Order[]
+  @@index([slug])
+  @@index([status])
+  @@index([companyId, status])
+  @@index([deletedAt])
+  @@map("stores")
 }
 
-//////////////////////////////////////////////////////
-// CATEGORY
-//////////////////////////////////////////////////////
+// Dirección completa y normalizada de la tienda.
+// Incluye coords GPS para búsqueda de proximidad.
+model StoreAddress {
+  id         String   @id @default(uuid())
+  storeId    String   @unique
+  countryId  String?
+  street     String
+  city       String
+  state      String?                    // provincia / estado / departamento
+  postalCode String?
+  reference  String?                    // "Frente al parque Kennedy, local 12"
+  latitude   Decimal? @db.Decimal(10,7) // PostGIS-preparado
+  longitude  Decimal? @db.Decimal(10,7)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  store      Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  country    Country? @relation(fields: [countryId], references: [id])
+
+  @@index([latitude, longitude])
+  @@map("store_addresses")
+}
+
+// Configuración operativa — separada de Store para no inflar el modelo.
+model StoreSettings {
+  id                        String   @id @default(uuid())
+  storeId                   String   @unique
+  whatsappNumber            String?
+  instagramUrl              String?
+  tiktokUrl                 String?
+  websiteUrl                String?
+  acceptsWhatsapp           Boolean  @default(true)
+  acceptsCash               Boolean  @default(true)
+  acceptsCard               Boolean  @default(false)
+  acceptsOnlinePayment      Boolean  @default(false)
+  deliveryRadiusKm          Decimal? @db.Decimal(6,2)
+  averagePreparationMinutes Int?
+  minimumOrderAmount        Decimal? @db.Decimal(10,2)
+  freeDeliveryFromAmount    Decimal? @db.Decimal(10,2)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  store   Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("store_settings")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// DOMINIO 05 — CATÁLOGO
+//
+// Category: árbol self-referencial infinito.
+//   Electrónica → Celulares → iPhone → iPhone 15 Pro
+//
+// Product: el artículo base. Sin stock (stock vive en Inventory).
+//
+// ProductVariant: talla/color/capacidad. Si no hay variantes, se crea
+//   una variante "default" al publicar (servicio lo maneja).
+//
+// Inventory: stock por (variantId × storeId).
+//   Sucursal Norte: 10 Nike M Rojo
+//   Sucursal Centro: 3 Nike M Rojo
+//   El overselling se previene con reservedStock.
+//   Lógica: availableStock = stock - reservedStock
+// ══════════════════════════════════════════════════════════════════════════
 
 model Category {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  slug        String   @unique
+  id          String     @id @default(uuid())
+  name        String     @unique
+  slug        String     @unique
+  description String?
+  iconUrl     String?
+  parentId    String?    // null = categoría raíz
+  isActive    Boolean    @default(true)
+  sortOrder   Int        @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  deletedAt   DateTime?
 
-  products    Product[]
+  parent     Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children   Category[] @relation("CategoryTree")
+  products   Product[]
+  promotions Promotion[]
+
+  @@index([slug])
+  @@index([parentId])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("categories")
 }
-
-//////////////////////////////////////////////////////
-// PRODUCT
-//////////////////////////////////////////////////////
 
 model Product {
-  id           String   @id @default(uuid())
-  storeId      String
-  categoryId   String
-  name         String
-  description  String?
-  price        Decimal  @db.Decimal(10,2)
-  stock        Int
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  id             String        @id @default(uuid())
+  storeId        String
+  categoryId     String
+  name           String
+  slug           String        @unique
+  description    String?
+  basePrice      Decimal       @db.Decimal(10,2)  // SIEMPRE Decimal
+  compareAtPrice Decimal?      @db.Decimal(10,2)  // precio tachado "antes: $X"
+  sku            String?       @unique
+  barcode        String?
+  weightGrams    Int?
+  status         ProductStatus @default(DRAFT)
+  isFeatured     Boolean       @default(false)
+  // Disponibilidad horaria (restaurantes, productos con ventana de tiempo)
+  isAvailable    Boolean       @default(true)
+  availableFrom  String?       // "08:00" HH:mm — timezone de la tienda
+  availableTo    String?       // "22:00" — comparación en capa de servicio
+  availableDays  Json?         // ["mon","tue","wed","thu","fri","sat"]
+  averageRating  Decimal       @db.Decimal(3,2) @default(0)
+  reviewCount    Int           @default(0)
+  totalSold      Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
 
-  store        Store @relation(fields: [storeId], references: [id])
-  category     Category @relation(fields: [categoryId], references: [id])
+  store          Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  category       Category      @relation(fields: [categoryId], references: [id])
+  images         ProductImage[]
+  variants       ProductVariant[]
+  cartItems      CartItem[]
+  orderItems     OrderItem[]
+  reviews        Review[]
+  favorites      Favorite[]
+  promotions     Promotion[]
+  analyticsEvents AnalyticsEvent[]
 
-  images       ProductImage[]
-  cartItems    CartItem[]
-  orderItems   OrderItem[]
+  @@index([storeId, status])
+  @@index([categoryId, status])
+  @@index([slug])
+  @@index([isFeatured, status])
+  @@index([isAvailable, status])
+  @@index([deletedAt])
+  @@map("products")
 }
 
-//////////////////////////////////////////////////////
-// PRODUCT IMAGE
-//////////////////////////////////////////////////////
+// ProductVariant: cada combinación de atributos vendible.
+// Ejemplos: "Talla M / Rojo", "128GB / Negro / Desbloqueado"
+// El precio puede heredar del producto (price = null) o ser propio.
+model ProductVariant {
+  id          String    @id @default(uuid())
+  productId   String
+  name        String    // "Talla M / Rojo"
+  sku         String?   @unique
+  price       Decimal?  @db.Decimal(10,2) // null = heredar basePrice
+  isActive    Boolean   @default(true)
+  isAvailable Boolean   @default(true)
+  attributes  Json?     // { "color":"rojo", "talla":"M", "capacidad":"128GB" }
+  sortOrder   Int       @default(0)
+  deletedAt   DateTime?
+
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  inventory  Inventory[]
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@index([productId, isActive])
+  @@index([deletedAt])
+  @@map("product_variants")
+}
 
 model ProductImage {
-  id          String @id @default(uuid())
-  productId   String
-  url         String
+  id        String   @id @default(uuid())
+  productId String
+  url       String
+  altText   String?
+  sortOrder Int      @default(0)
+  isPrimary Boolean  @default(false)
 
-  product Product @relation(fields:[productId], references:[id])
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, isPrimary])
+  @@map("product_images")
 }
 
-//////////////////////////////////////////////////////
-// CART
-//////////////////////////////////////////////////////
+// Inventory: stock por (variantId × storeId) — la única fuente de verdad.
+//
+// availableStock = stock - reservedStock  (calculado en servicio)
+// reservedStock  = suma de CartItems activos para esta variante en esta tienda
+// lowStockAlert  = umbral para notificar al comercio (configurable)
+//
+// Migración raw recomendada para integridad:
+//   ALTER TABLE inventory ADD CONSTRAINT inventory_stock_non_negative
+//   CHECK (stock >= 0 AND reserved_stock >= 0 AND stock >= reserved_stock);
+model Inventory {
+  id            String         @id @default(uuid())
+  storeId       String
+  variantId     String
+  stock         Int            @default(0)         // stock físico real
+  reservedStock Int            @default(0)         // reservado en carts activos
+  lowStockAlert Int?           @default(5)         // notificar si stock ≤ este valor
+  updatedAt     DateTime       @updatedAt
+
+  store         Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  variant       ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, variantId])
+  @@index([storeId])
+  @@index([variantId])
+  @@map("inventory")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// DOMINIO 06 — FAVORITOS
+// Un registro por (userId × target). El tipo indica si es producto o tienda.
+// Constraint: exactamente uno de productId/storeId debe ser NOT NULL.
+// Validar en servicio + CHECK constraint en migración raw:
+//   CHECK (
+//     (product_id IS NOT NULL AND store_id IS NULL) OR
+//     (product_id IS NULL AND store_id IS NOT NULL)
+//   )
+// ══════════════════════════════════════════════════════════════════════════
+
+model Favorite {
+  id        String       @id @default(uuid())
+  userId    String
+  type      FavoriteType
+  productId String?      // NOT NULL si type = PRODUCT
+  storeId   String?      // NOT NULL si type = STORE
+  createdAt DateTime     @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store   Store?   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@unique([userId, storeId])
+  @@index([userId, type])
+  @@map("favorites")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// DOMINIO 07 — PROMOCIONES
+// ══════════════════════════════════════════════════════════════════════════
+
+model Promotion {
+  id             String         @id @default(uuid())
+  title          String
+  description    String?
+  code           String?        @unique  // cupón manual; null = automática
+  discountType   DiscountType
+  discountValue  Decimal        @db.Decimal(10,2)
+  scope          PromotionScope @default(STORE)
+  storeId        String?
+  productId      String?
+  categoryId     String?
+  minOrderTotal  Decimal?       @db.Decimal(10,2)
+  maxDiscount    Decimal?       @db.Decimal(10,2)
+  maxUses        Int?
+  usedCount      Int            @default(0)
+  maxUsesPerUser Int?
+  isActive       Boolean        @default(true)
+  startsAt       DateTime
+  endsAt         DateTime
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  deletedAt      DateTime?
+
+  store      Store?     @relation(fields: [storeId], references: [id])
+  product    Product?   @relation(fields: [productId], references: [id])
+  category   Category?  @relation(fields: [categoryId], references: [id])
+  uses       PromotionUse[]
+
+  @@index([code])
+  @@index([storeId, isActive])
+  @@index([startsAt, endsAt, isActive])
+  @@index([deletedAt])
+  @@map("promotions")
+}
+
+model PromotionUse {
+  id          String    @id @default(uuid())
+  promotionId String
+  userId      String
+  orderId     String    @unique
+  discount    Decimal   @db.Decimal(10,2)
+  createdAt   DateTime  @default(now())
+
+  promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@unique([promotionId, orderId])
+  @@index([promotionId, userId])
+  @@index([userId])
+  @@map("promotion_uses")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// DOMINIO 08 — CARRITO
+//
+// CartItem NO tiene storeId hard-coded en el modelo de negocio principal.
+// El storeId está denormalizado en CartItem solo para agrupar al checkout.
+// La validación "todos los items del mismo store" vive en el servicio.
+// Esto permite migrar a multi-store checkout sin cambiar el schema.
+// ══════════════════════════════════════════════════════════════════════════
 
 model Cart {
-  id          String   @id @default(uuid())
-  userId      String
-  storeId     String
-  createdAt   DateTime @default(now())
+  id        String     @id @default(uuid())
+  userId    String
+  sessionId String?    // guest checkout (no autenticado)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 
-  user        User @relation(fields:[userId], references:[id])
-  store       Store @relation(fields:[storeId], references:[id])
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     CartItem[]
 
-  items       CartItem[]
+  @@index([userId])
+  @@map("carts")
 }
-
-//////////////////////////////////////////////////////
-// CART ITEM
-//////////////////////////////////////////////////////
 
 model CartItem {
-  id          String @id @default(uuid())
-  cartId      String
-  productId   String
-  quantity    Int
+  id        String          @id @default(uuid())
+  cartId    String
+  storeId   String          // denormalizado — para agrupar en checkout multi-store
+  productId String
+  variantId String?
+  quantity  Int
+  addedAt   DateTime        @default(now())
 
-  cart        Cart @relation(fields:[cartId], references:[id])
-  product     Product @relation(fields:[productId], references:[id])
+  cart      Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product   Product         @relation(fields: [productId], references: [id])
+  variant   ProductVariant? @relation(fields: [variantId], references: [id])
+
+  @@unique([cartId, productId, variantId])
+  @@index([cartId, storeId])
+  @@map("cart_items")
 }
 
-//////////////////////////////////////////////////////
-// ORDER
-//////////////////////////////////////////////////////
-
-model Order {
-  id             String @id @default(uuid())
-  userId         String
-  storeId        String
-  branchId       String
-  total          Decimal @db.Decimal(10,2)
-  status         OrderStatus
-  createdAt      DateTime @default(now())
-
-  user           User @relation(fields:[userId], references:[id])
-  store          Store @relation(fields:[storeId], references:[id])
-  branch         StoreBranch @relation(fields:[branchId], references:[id])
-
-  items          OrderItem[]
-  payment        Payment?
-  delivery       Delivery?
-}
-
-//////////////////////////////////////////////////////
-// ORDER ITEM
-//////////////////////////////////////////////////////
-
-model OrderItem {
-  id          String @id @default(uuid())
-  orderId     String
-  productId   String
-  quantity    Int
-  price       Decimal @db.Decimal(10,2)
-
-  order       Order @relation(fields:[orderId], references:[id])
-  product     Product @relation(fields:[productId], references:[id])
-}
-
-//////////////////////////////////////////////////////
-// ADDRESS
-//////////////////////////////////////////////////////
+// ══════════════════════════════════════════════════════════════════════════
+// DOMINIO — DIRECCIÓN DEL CLIENTE (normalizada, igual que StoreAddress)
+// ══════════════════════════════════════════════════════════════════════════
 
 model Address {
-  id          String @id @default(uuid())
+  id          String   @id @default(uuid())
   userId      String
-  address     String
-  latitude    Float
-  longitude   Float
+  countryId   String?
+  label       String?  // "Casa", "Trabajo", "Mamá"
+  street      String
+  city        String
+  state       String?  // provincia / estado / departamento
+  postalCode  String?
+  reference   String?  // "Edificio azul, piso 3, timbre B"
+  latitude    Decimal? @db.Decimal(10,7)
+  longitude   Decimal? @db.Decimal(10,7)
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
 
-  user User @relation(fields:[userId], references:[id])
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  country     Country? @relation(fields: [countryId], references: [id])
+  orders      Order[]
+
+  @@index([userId, isDefault])
+  @@map("addresses")
 }
 
-//////////////////////////////////////////////////////
-// PAYMENT
-//////////////////////////////////////////////////////
+// ══════════════════════════════════════════════════════════════════════════
+// DOMINIO 09 — ÓRDENES
+// Una Order por Store. Checkout → N Orders (una por tienda).
+// ══════════════════════════════════════════════════════════════════════════
+
+model Order {
+  id                  String              @id @default(uuid())
+  orderNumber         String              @unique  // "MVG-2024-00001"
+  userId              String
+  storeId             String
+  addressId           String?
+  deliveryType        DeliveryType        @default(HOME_DELIVERY)
+  subtotal            Decimal             @db.Decimal(10,2)
+  deliveryFee         Decimal             @db.Decimal(10,2) @default(0)
+  discount            Decimal             @db.Decimal(10,2) @default(0)
+  taxAmount           Decimal             @db.Decimal(10,2) @default(0)
+  total               Decimal             @db.Decimal(10,2)
+  status              OrderStatus         @default(PENDING)
+  cancellationReason  CancellationReason?
+  cancellationNote    String?
+  notes               String?
+  whatsappMessageId   String?
+  estimatedDeliveryAt DateTime?
+  confirmedAt         DateTime?
+  deliveredAt         DateTime?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  deletedAt           DateTime?
+
+  user              User               @relation(fields: [userId], references: [id])
+  store             Store              @relation(fields: [storeId], references: [id])
+  address           Address?           @relation(fields: [addressId], references: [id])
+  items             OrderItem[]
+  payment           Payment?
+  delivery          Delivery?
+  statusHistory     OrderStatusHistory[]
+  promotionUse      PromotionUse?
+  ledgerEntries     LedgerEntry[]
+  transactionLedger TransactionLedger?
+
+  @@index([userId, status])
+  @@index([storeId, status])
+  @@index([orderNumber])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("orders")
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(uuid())
+  orderId   String
+  status    OrderStatus
+  note      String?
+  changedBy String?
+  createdAt DateTime    @default(now())
+
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@map("order_status_history")
+}
+
+model OrderItem {
+  id          String          @id @default(uuid())
+  orderId     String
+  productId   String
+  variantId   String?
+  productName String          // snapshot al momento de la compra
+  variantName String?
+  quantity    Int
+  unitPrice   Decimal         @db.Decimal(10,2) // precio real pagado
+  totalPrice  Decimal         @db.Decimal(10,2)
+
+  order       Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product     Product         @relation(fields: [productId], references: [id])
+  variant     ProductVariant? @relation(fields: [variantId], references: [id])
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// DOMINIO 10 — PAGOS
+//
+// PaymentGateway: agnóstico de país y proveedor.
+// Ejemplos de providerKey por región:
+//   Global    → "stripe" "paypal" "mercadopago" "adyen" "braintree"
+//   Ecuador   → "payphone" "datafast" "kushki"
+//   Colombia  → "payu" "wompi" "nequi" "bancolombia"
+//   México    → "conekta" "clip" "oxxo" "kueski" "spei"
+//   Perú      → "izipay" "yape" "pago_efectivo"
+//   Chile     → "transbank" "khipu" "flow"
+//   Argentina → "mercadopago" "rapipago" "pagofacil"
+//   Brasil    → "pix" "pagseguro" "cielo"
+//   USA/Global→ "stripe" "paypal" "apple_pay" "google_pay" "klarna"
+//
+// configEncrypted: AES-256-GCM — NUNCA en plano, NUNCA al cliente.
+// ══════════════════════════════════════════════════════════════════════════
+
+model PaymentGateway {
+  id               String          @id @default(uuid())
+  providerKey      String          @unique  // "stripe", "mercadopago"
+  displayName      String
+  logoUrl          String?
+  supportedMethods PaymentMethod[]
+  isActive         Boolean         @default(true)
+  isTestMode       Boolean         @default(false)
+  configEncrypted  Json?           // ⚠ apiKey / secretKey — AES-256-GCM
+  webhookSecret    String?
+  sortOrder        Int             @default(0)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  payments  Payment[]
+  countries PaymentGatewayCountry[]
+
+  @@index([isActive])
+  @@map("payment_gateways")
+}
+
+model PaymentGatewayCountry {
+  id        String   @id @default(uuid())
+  gatewayId String
+  countryId String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  gateway   PaymentGateway @relation(fields: [gatewayId], references: [id], onDelete: Cascade)
+  country   Country        @relation(fields: [countryId], references: [id], onDelete: Cascade)
+
+  @@unique([gatewayId, countryId])
+  @@map("payment_gateway_countries")
+}
 
 model Payment {
-  id            String @id @default(uuid())
-  orderId        String @unique
-  amount         Decimal @db.Decimal(10,2)
-  provider       String?
-  status         PaymentStatus
+  id                String          @id @default(uuid())
+  orderId           String          @unique
+  gatewayId         String?         // null si WHATSAPP_TRANSFER o CASH
+  amount            Decimal         @db.Decimal(10,2)
+  currency          String          @default("USD")  // ISO 4217
+  method            PaymentMethod   @default(WHATSAPP_TRANSFER)
+  status            PaymentStatus   @default(PENDING)
+  providerPaymentId String?         // charge_id / payment_intent / txn_id
+  providerResponse  Json?           // ⚠ respuesta cruda — NUNCA al cliente
+  providerFee       Decimal?        @db.Decimal(10,2)
+  paidAt            DateTime?
+  refundedAt        DateTime?
+  refundAmount      Decimal?        @db.Decimal(10,2)
+  refundReason      String?
+  metadata          Json?           // installments, qrCode, voucherCode
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
-  order Order @relation(fields:[orderId], references:[id])
+  order             Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  gateway           PaymentGateway? @relation(fields: [gatewayId], references: [id])
+
+  @@index([status, createdAt])
+  @@map("payments")
 }
 
-//////////////////////////////////////////////////////
-// DELIVERY
-//////////////////////////////////////////////////////
+// ══════════════════════════════════════════════════════════════════════════
+// DOMINIO 11 — LOGÍSTICA
+//
+// Delivery: el "sobre" de la entrega (addresses, estado general).
+// DeliveryAssignment: cada intento de asignar un repartidor.
+//   Un pedido puede pasar por varios drivers (rechazo → reasignación).
+//   El assignment activo = el más reciente en ACCEPTED.
+// ══════════════════════════════════════════════════════════════════════════
+
+model DriverProfile {
+  id              String       @id @default(uuid())
+  userId          String       @unique
+  firstName       String
+  lastName        String
+  photoUrl        String?
+  vehicleType     String?      // "moto" "bicicleta" "auto"
+  vehiclePlate    String?
+  status          DriverStatus @default(OFFLINE)
+  currentLat      Decimal?     @db.Decimal(10,7)
+  currentLng      Decimal?     @db.Decimal(10,7)
+  lastLocationAt  DateTime?
+  totalDeliveries Int          @default(0)
+  averageRating   Decimal      @db.Decimal(3,2) @default(0)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  deletedAt       DateTime?
+
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignments DeliveryAssignment[]
+
+  @@index([status])
+  @@index([currentLat, currentLng])
+  @@map("driver_profiles")
+}
 
 model Delivery {
-  id             String @id @default(uuid())
-  orderId        String @unique
-  driverName     String?
-  driverPhone    String?
-  status         DeliveryStatus
+  id               String         @id @default(uuid())
+  orderId          String         @unique
+  status           DeliveryStatus @default(WAITING_DRIVER)
+  pickupAddress    String?
+  pickupLat        Decimal?       @db.Decimal(10,7)
+  pickupLng        Decimal?       @db.Decimal(10,7)
+  dropoffAddress   String?
+  dropoffLat       Decimal?       @db.Decimal(10,7)
+  dropoffLng       Decimal?       @db.Decimal(10,7)
+  estimatedMinutes Int?
+  distanceKm       Decimal?       @db.Decimal(8,2)
+  deliveryFee      Decimal?       @db.Decimal(10,2)
+  pickedUpAt       DateTime?
+  deliveredAt      DateTime?
+  failureReason    String?
+  trackingEvents   Json?          // [{ lat, lng, timestamp, status }]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
-  order Order @relation(fields:[orderId], references:[id])
+  order       Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  assignments DeliveryAssignment[]
+
+  @@index([status, createdAt])
+  @@map("deliveries")
 }
 
-//////////////////////////////////////////////////////
-// ANALYTICS
-//////////////////////////////////////////////////////
+model DeliveryAssignment {
+  id            String           @id @default(uuid())
+  deliveryId    String
+  driverId      String
+  status        AssignmentStatus @default(OFFERED)
+  offeredAt     DateTime         @default(now())
+  respondedAt   DateTime?
+  acceptedAt    DateTime?
+  rejectedAt    DateTime?
+  rejectedNote  String?
+  completedAt   DateTime?
+  failedAt      DateTime?
+  failureNote   String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
-model StoreAnalytics {
-  id              String @id @default(uuid())
+  delivery Delivery      @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  driver   DriverProfile @relation(fields: [driverId], references: [id])
+
+  @@index([deliveryId, status])
+  @@index([driverId, status])
+  @@index([offeredAt])
+  @@map("delivery_assignments")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// DOMINIO 12 — FINANZAS
+//
+// Wallet: saldo por MerchantCompany (desnormalizado para lectura rápida).
+//
+// LedgerEntry: movimiento INMUTABLE que afecta el Wallet.
+//   Solo INSERT — igual que AuditLog.
+//   isCredit = true → suma; isCredit = false → resta.
+//   balance = SUM(amount * (isCredit ? 1 : -1))  [calculado en servicio]
+//
+// TransactionLedger: descomposición financiera de CADA orden.
+//   Orden de $100 → grossAmount $100 / platformFee $8 / merchantAmount $92.
+//   Es la fuente de verdad para liquidaciones y reportes fiscales.
+// ══════════════════════════════════════════════════════════════════════════
+
+model Wallet {
+  id             String   @id @default(uuid())
+  companyId      String   @unique
+  balance        Decimal  @db.Decimal(12,2) @default(0)
+  pendingBalance Decimal  @db.Decimal(12,2) @default(0)
+  currency       String   @default("USD")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  company  MerchantCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entries  LedgerEntry[]
+
+  @@map("wallets")
+}
+
+model LedgerEntry {
+  id          String          @id @default(uuid())
+  walletId    String
+  orderId     String?
+  type        LedgerEntryType
+  amount      Decimal         @db.Decimal(12,2) // SIEMPRE positivo
+  currency    String          @default("USD")
+  isCredit    Boolean         // true = suma; false = resta
+  description String?
+  metadata    Json?
+  createdAt   DateTime        @default(now())
+
+  wallet      Wallet          @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  order       Order?          @relation(fields: [orderId], references: [id])
+
+  @@index([walletId, createdAt])
+  @@index([walletId, type])
+  @@index([orderId])
+  @@map("ledger_entries")
+}
+
+model TransactionLedger {
+  id              String   @id @default(uuid())
+  orderId         String   @unique
+  grossAmount     Decimal  @db.Decimal(12,2) // lo que pagó el cliente
+  platformFee     Decimal  @db.Decimal(12,2) // comisión de la plataforma
+  deliveryFee     Decimal  @db.Decimal(12,2) @default(0)
+  taxAmount       Decimal  @db.Decimal(12,2) @default(0)
+  discountAmount  Decimal  @db.Decimal(12,2) @default(0)
+  merchantAmount  Decimal  @db.Decimal(12,2) // lo que recibe el comercio
+  currency        String   @default("USD")
+  settledAt       DateTime?                   // cuándo se liquidó al comercio
+  createdAt       DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([settledAt])
+  @@map("transaction_ledger")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// DOMINIO 13 — REPUTACIÓN, BÚSQUEDA Y SOPORTE
+// ══════════════════════════════════════════════════════════════════════════
+
+// Constraint XOR: exactamente uno de (storeId, productId) debe ser NOT NULL.
+// Se valida en servicio + CHECK en migración raw:
+//   ALTER TABLE reviews ADD CONSTRAINT review_target_xor CHECK (
+//     (store_id IS NOT NULL AND product_id IS NULL) OR
+//     (store_id IS NULL AND product_id IS NOT NULL)
+//   );
+model Review {
+  id         String   @id @default(uuid())
+  userId     String
+  storeId    String?
+  productId  String?
+  orderId    String?  // anti-spam: vincula a compra real (orden DELIVERED)
+  rating     Int      // 1–5; validar en servicio
+  title      String?
+  body       String?
+  isVerified Boolean  @default(false) // true = orden en DELIVERED
+  isVisible  Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
+
+  user    User     @relation(fields: [userId], references: [id])
+  store   Store?   @relation(fields: [storeId], references: [id])
+  product Product? @relation(fields: [productId], references: [id])
+
+  @@index([storeId, isVisible])
+  @@index([productId, isVisible])
+  @@index([userId])
+  @@map("reviews")
+}
+
+// Búsquedas con 0 resultados = gaps de catálogo = oportunidades de negocio.
+model SearchHistory {
+  id          String   @id @default(uuid())
+  userId      String?  // null = guest
+  sessionId   String?
+  query       String
+  resultCount Int      @default(0)
+  filters     Json?    // { "categoryId":"...", "priceMax":50 }
+  clickedId   String?  // productId/storeId en que hizo clic
+  createdAt   DateTime @default(now())
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([query])
+  @@index([resultCount])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("search_history")
+}
+
+model SupportTicket {
+  id         String         @id @default(uuid())
+  userId     String
+  storeId    String?
+  orderId    String?
+  subject    String
+  status     TicketStatus   @default(OPEN)
+  priority   TicketPriority @default(MEDIUM)
+  assignedTo String?
+  resolvedAt DateTime?
+  closedAt   DateTime?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  deletedAt  DateTime?
+
+  user     User            @relation(fields: [userId], references: [id])
+  store    Store?          @relation(fields: [storeId], references: [id])
+  messages TicketMessage[]
+
+  @@index([userId, status])
+  @@index([status, priority])
+  @@index([assignedTo, status])
+  @@index([deletedAt])
+  @@map("support_tickets")
+}
+
+model TicketMessage {
+  id          String   @id @default(uuid())
+  ticketId    String
+  authorId    String
+  body        String
+  isInternal  Boolean  @default(false) // nota interna — invisible al usuario
+  attachments Json?    // [{ url, filename, mimeType }]
+  createdAt   DateTime @default(now())
+
+  ticket      SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+  @@map("ticket_messages")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// DOMINIO 13 — SUSCRIPCIONES
+// Plan como entidad: cambiar precios/niveles = INSERT, no deploy.
+// ══════════════════════════════════════════════════════════════════════════
+
+model Plan {
+  id           String    @id @default(uuid())
+  name         String    @unique  // "Semilla", "Emprendedor", "Premium"
+  slug         String    @unique
+  description  String?
+  priceMonthly Decimal   @db.Decimal(10,2)
+  priceAnnual  Decimal?  @db.Decimal(10,2)
+  maxProducts  Int?      // null = ilimitado
+  isFeatured   Boolean   @default(false)
+  isActive     Boolean   @default(true)
+  features     Json?     // { "analytics":true, "pushNotifications":true }
+  sortOrder    Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id                 String             @id @default(uuid())
+  companyId          String
+  planId             String
+  status             SubscriptionStatus @default(TRIALING)
+  billingCycle       BillingCycle       @default(MONTHLY)
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  trialEndsAt        DateTime?
+  cancelledAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  company        MerchantCompany      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan           Plan                 @relation(fields: [planId], references: [id])
+  billingHistory SubscriptionBilling[]
+
+  @@index([companyId, status])
+  @@index([status, currentPeriodEnd])
+  @@map("subscriptions")
+}
+
+model SubscriptionBilling {
+  id             String        @id @default(uuid())
+  subscriptionId String
+  amount         Decimal       @db.Decimal(10,2)
+  currency       String        @default("USD")
+  status         PaymentStatus
+  invoiceUrl     String?
+  billedAt       DateTime
+  createdAt      DateTime      @default(now())
+
+  subscription   Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId, billedAt])
+  @@map("subscription_billing")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// DOMINIO 13 — ANALYTICS
+// ══════════════════════════════════════════════════════════════════════════
+
+model AnalyticsEvent {
+  id        String             @id @default(uuid())
+  storeId   String
+  productId String?
+  userId    String?
+  sessionId String?
+  eventType AnalyticsEventType
+  metadata  Json?              // { searchQuery, source, referrer, deviceType }
+  createdAt DateTime           @default(now())
+
+  store   Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
+
+  @@index([storeId, createdAt])
+  @@index([eventType, createdAt])
+  @@index([productId, eventType])
+  @@map("analytics_events")
+}
+
+// Snapshot diario — dashboard rápido sin escanear millones de eventos.
+model StoreAnalyticsSnapshot {
+  id              String   @id @default(uuid())
   storeId         String
-  profileViews    Int @default(0)
-  productClicks   Int @default(0)
-  whatsappClicks  Int @default(0)
+  date            DateTime @db.Date
+  profileViews    Int      @default(0)
+  productViews    Int      @default(0)
+  whatsappClicks  Int      @default(0)
+  cartAdds        Int      @default(0)
+  ordersStarted   Int      @default(0)
+  ordersCompleted Int      @default(0)
+  revenue         Decimal  @db.Decimal(12,2) @default(0)
+  newCustomers    Int      @default(0)
+  promotionUses   Int      @default(0)
+  favoritesAdded  Int      @default(0)
 
-  store Store @relation(fields:[storeId], references:[id])
+  store           Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, date])
+  @@index([storeId, date])
+  @@map("store_analytics_snapshots")
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// DOMINIO — NOTIFICACIONES Y BANNERS
+// ══════════════════════════════════════════════════════════════════════════
+
+model Notification {
+  id        String              @id @default(uuid())
+  userId    String
+  channel   NotificationChannel
+  title     String
+  body      String
+  data      Json?               // deeplink, orderId, productId, storeId
+  status    NotificationStatus  @default(PENDING)
+  readAt    DateTime?
+  sentAt    DateTime?
+  createdAt DateTime            @default(now())
+
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+  @@map("notifications")
+}
+
+model Banner {
+  id        String         @id @default(uuid())
+  storeId   String?        // null = banner de la plataforma (super-admin)
+  title     String
+  imageUrl  String
+  linkUrl   String?
+  position  BannerPosition
+  isActive  Boolean        @default(true)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  sortOrder Int            @default(0)
+  createdAt DateTime       @default(now())
+  deletedAt DateTime?
+
+  store     Store?         @relation(fields: [storeId], references: [id])
+
+  @@index([position, isActive])
+  @@index([startsAt, endsAt])
+  @@map("banners")
 }

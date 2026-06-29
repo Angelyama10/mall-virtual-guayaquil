@@ -2,7 +2,6 @@ services:
 
   web:
     build: ./apps/web
-
     container_name: mall_web
 
     ports:
@@ -20,10 +19,8 @@ services:
       - api
 
 
-
   api:
     build: ./apps/api
-
     container_name: mall_api
 
     ports:
@@ -33,14 +30,15 @@ services:
       - ./apps/api:/app
       - /app/node_modules
 
+    env_file:
+      - ./apps/api/.env
+
     depends_on:
       - postgres
 
 
-
   postgres:
     image: postgres:17-alpine
-
     container_name: mall_postgres
 
     restart: always
