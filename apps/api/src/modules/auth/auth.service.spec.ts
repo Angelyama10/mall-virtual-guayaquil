@@ -14,6 +14,7 @@ describe('AuthService', () => {
   let usersService: {
     create: jest.Mock;
     findByEmailForAuth: jest.Mock;
+    findOne: jest.Mock;
   };
   let jwtService: {
     signAsync: jest.Mock;
@@ -39,6 +40,7 @@ describe('AuthService', () => {
     usersService = {
       create: jest.fn(),
       findByEmailForAuth: jest.fn(),
+      findOne: jest.fn(),
     };
     jwtService = {
       signAsync: jest.fn().mockResolvedValue('access-token'),
@@ -120,5 +122,12 @@ describe('AuthService', () => {
         password: 'wrong-password',
       }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('returns the authenticated user profile', async () => {
+    usersService.findOne.mockResolvedValue(safeUser);
+
+    await expect(service.me('user-1')).resolves.toEqual(safeUser);
+    expect(usersService.findOne).toHaveBeenCalledWith('user-1');
   });
 });

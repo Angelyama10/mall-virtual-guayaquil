@@ -42,6 +42,10 @@ export class AuthService {
     };
   }
 
+  me(userId: string) {
+    return this.usersService.findOne(userId);
+  }
+
   private signAccessToken(user: { id: string; email: string; role: string }) {
     return this.jwtService.signAsync({
       sub: user.id,

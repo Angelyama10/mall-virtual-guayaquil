@@ -7,12 +7,14 @@ describe('AuthController', () => {
   let authService: {
     register: jest.Mock;
     login: jest.Mock;
+    me: jest.Mock;
   };
 
   beforeEach(async () => {
     authService = {
       register: jest.fn(),
       login: jest.fn(),
+      me: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -52,5 +54,15 @@ describe('AuthController', () => {
     controller.login(dto);
 
     expect(authService.login).toHaveBeenCalledWith(dto);
+  });
+
+  it('delegates authenticated profile lookup to AuthService', () => {
+    controller.me({
+      id: 'user-1',
+      email: 'angel@example.com',
+      role: 'CUSTOMER',
+    });
+
+    expect(authService.me).toHaveBeenCalledWith('user-1');
   });
 });
