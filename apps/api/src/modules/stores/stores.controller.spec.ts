@@ -55,7 +55,10 @@ describe('StoresController', () => {
       dto,
     );
 
-    expect(storesService.createMerchantProfile).toHaveBeenCalledWith('user-1', dto);
+    expect(storesService.createMerchantProfile).toHaveBeenCalledWith(
+      'user-1',
+      dto,
+    );
   });
 
   it('delegates company creation to StoresService', () => {

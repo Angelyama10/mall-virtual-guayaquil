@@ -186,8 +186,8 @@ describe('StoresService', () => {
   it('throws when a public store cannot be found by slug', async () => {
     prisma.store.findFirst.mockResolvedValue(null);
 
-    await expect(service.findPublicStoreBySlug('missing-store')).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(
+      service.findPublicStoreBySlug('missing-store'),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

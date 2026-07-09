@@ -109,7 +109,10 @@ export class StoresService {
   }
 
   async createStore(userId: string, dto: CreateStoreDto) {
-    const company = await this.findMerchantCompanyOrThrow(userId, dto.companyId);
+    const company = await this.findMerchantCompanyOrThrow(
+      userId,
+      dto.companyId,
+    );
     const slug = await this.buildUniqueStoreSlug(dto.slug ?? dto.name);
 
     return this.prisma.store.create({
@@ -144,7 +147,8 @@ export class StoresService {
                 acceptsCard: dto.settings.acceptsCard,
                 acceptsOnlinePayment: dto.settings.acceptsOnlinePayment,
                 deliveryRadiusKm: dto.settings.deliveryRadiusKm,
-                averagePreparationMinutes: dto.settings.averagePreparationMinutes,
+                averagePreparationMinutes:
+                  dto.settings.averagePreparationMinutes,
                 minimumOrderAmount: dto.settings.minimumOrderAmount,
                 freeDeliveryFromAmount: dto.settings.freeDeliveryFromAmount,
               },

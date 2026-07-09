@@ -54,7 +54,10 @@ export class StoresController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.MERCHANT)
   @Post()
-  createStore(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateStoreDto) {
+  createStore(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateStoreDto,
+  ) {
     return this.storesService.createStore(user.id, dto);
   }
 }

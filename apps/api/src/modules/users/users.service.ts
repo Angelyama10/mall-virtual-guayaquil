@@ -1,4 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -28,7 +32,10 @@ export class UsersService {
   async create(dto: CreateUserDto) {
     await this.ensureEmailAndPhoneAreAvailable(dto.email, dto.phone);
 
-    const passwordHash = await bcrypt.hash(dto.plainPassword, PASSWORD_HASH_ROUNDS);
+    const passwordHash = await bcrypt.hash(
+      dto.plainPassword,
+      PASSWORD_HASH_ROUNDS,
+    );
 
     return this.prisma.user.create({
       select: USER_SAFE_SELECT,
@@ -89,7 +96,10 @@ export class UsersService {
     };
 
     if (dto.plainPassword) {
-      data.passwordHash = await bcrypt.hash(dto.plainPassword, PASSWORD_HASH_ROUNDS);
+      data.passwordHash = await bcrypt.hash(
+        dto.plainPassword,
+        PASSWORD_HASH_ROUNDS,
+      );
       data.passwordChangedAt = new Date();
     }
 

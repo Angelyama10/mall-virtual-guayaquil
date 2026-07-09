@@ -55,6 +55,8 @@ describe('RolesGuard', () => {
   it('throws when a protected route has no authenticated user', () => {
     reflector.getAllAndOverride.mockReturnValue([UserRole.ADMIN]);
 
-    expect(() => guard.canActivate(createContext())).toThrow(ForbiddenException);
+    expect(() => guard.canActivate(createContext())).toThrow(
+      ForbiddenException,
+    );
   });
 });

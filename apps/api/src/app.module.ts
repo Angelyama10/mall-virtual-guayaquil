@@ -11,7 +11,16 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { CartModule } from './modules/cart/cart.module';
 
 @Module({
-  imports: [UsersModule, PrismaModule, AuthModule, ProductsModule, StoresModule, OrdersModule, PaymentsModule, CartModule],
+  imports: [
+    UsersModule,
+    PrismaModule,
+    AuthModule,
+    ProductsModule,
+    StoresModule,
+    OrdersModule,
+    PaymentsModule,
+    CartModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })

@@ -104,7 +104,10 @@ describe('AuthService', () => {
       password: 'password123',
     });
 
-    expect(bcrypt.compare).toHaveBeenCalledWith('password123', 'hashed-password');
+    expect(bcrypt.compare).toHaveBeenCalledWith(
+      'password123',
+      'hashed-password',
+    );
     expect(result.accessToken).toBe('access-token');
     expect(result.user).not.toHaveProperty('passwordHash');
   });
