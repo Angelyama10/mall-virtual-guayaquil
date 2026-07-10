@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
+import { StoreStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StoresService } from './stores.service';
 
@@ -20,7 +21,12 @@ describe('StoresService', () => {
       findUnique: jest.Mock;
       findMany: jest.Mock;
       create: jest.Mock;
+      update: jest.Mock;
     };
+    auditLog: {
+      create: jest.Mock;
+    };
+    $transaction: jest.Mock;
   };
 
   const merchantProfile = {
@@ -60,7 +66,12 @@ describe('StoresService', () => {
         findUnique: jest.fn(),
         findMany: jest.fn(),
         create: jest.fn(),
+        update: jest.fn(),
       },
+      auditLog: {
+        create: jest.fn(),
+      },
+      $transaction: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -189,5 +200,57 @@ describe('StoresService', () => {
     await expect(
       service.findPublicStoreBySlug('missing-store'),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('updates store status for admin approval flows', async () => {
+    prisma.store.findFirst.mockResolvedValue({
+      ...store,
+      status: StoreStatus.PENDING_REVIEW,
+      isOpen: false,
+    });
+    const activeStore = {
+      ...store,
+      status: StoreStatus.ACTIVE,
+    };
+    prisma.store.update.mockReturnValue('store-update');
+    prisma.auditLog.create.mockReturnValue('audit-log-create');
+    prisma.$transaction.mockResolvedValue([activeStore]);
+
+    const result = await service.updateStoreStatus(
+      {
+        id: 'admin-1',
+        email: 'admin@example.com',
+        role: 'ADMIN',
+      },
+      'store-1',
+      {
+        status: StoreStatus.ACTIVE,
+        note: 'Approved',
+      },
+    );
+
+    expect(prisma.store.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'store-1' },
+        data: {
+          status: StoreStatus.ACTIVE,
+          isOpen: undefined,
+        },
+      }),
+    );
+    expect(prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          userId: 'admin-1',
+          action: 'STORE_STATUS_UPDATED',
+          entityType: 'Store',
+          entityId: 'store-1',
+          metadata: {
+            note: 'Approved',
+          },
+        }),
+      }),
+    );
+    expect(result.status).toBe(StoreStatus.ACTIVE);
   });
 });

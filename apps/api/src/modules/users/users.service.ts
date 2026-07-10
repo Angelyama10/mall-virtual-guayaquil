@@ -6,7 +6,9 @@ import {
 import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CreateAddressDto } from './dto/create-address.dto';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateAddressDto } from './dto/update-address.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 const USER_SAFE_SELECT = {
@@ -24,6 +26,24 @@ const USER_SAFE_SELECT = {
 } satisfies Prisma.UserSelect;
 
 const PASSWORD_HASH_ROUNDS = 12;
+
+const ADDRESS_SELECT = {
+  id: true,
+  userId: true,
+  countryId: true,
+  label: true,
+  street: true,
+  city: true,
+  state: true,
+  postalCode: true,
+  reference: true,
+  latitude: true,
+  longitude: true,
+  isDefault: true,
+  createdAt: true,
+  updatedAt: true,
+  deletedAt: true,
+} satisfies Prisma.AddressSelect;
 
 @Injectable()
 export class UsersService {
@@ -122,6 +142,174 @@ export class UsersService {
     });
   }
 
+  findMyAddresses(userId: string) {
+    return this.prisma.address.findMany({
+      select: ADDRESS_SELECT,
+      where: {
+        userId,
+        deletedAt: null,
+      },
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+    });
+  }
+
+  async findMyAddress(userId: string, addressId: string) {
+    return this.findAddressOrThrow(userId, addressId);
+  }
+
+  async createMyAddress(userId: string, dto: CreateAddressDto) {
+    const existingAddressCount = await this.prisma.address.count({
+      where: {
+        userId,
+        deletedAt: null,
+      },
+    });
+    const shouldBeDefault = dto.isDefault ?? existingAddressCount === 0;
+    const createAddress = this.prisma.address.create({
+      select: ADDRESS_SELECT,
+      data: {
+        userId,
+        countryId: dto.countryId,
+        label: dto.label,
+        street: dto.street,
+        city: dto.city,
+        state: dto.state,
+        postalCode: dto.postalCode,
+        reference: dto.reference,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
+        isDefault: shouldBeDefault,
+      },
+    });
+
+    if (!shouldBeDefault) {
+      return createAddress;
+    }
+
+    const [, address] = await this.prisma.$transaction([
+      this.prisma.address.updateMany({
+        where: {
+          userId,
+          deletedAt: null,
+        },
+        data: {
+          isDefault: false,
+        },
+      }),
+      createAddress,
+    ]);
+
+    return address;
+  }
+
+  async updateMyAddress(
+    userId: string,
+    addressId: string,
+    dto: UpdateAddressDto,
+  ) {
+    await this.findAddressOrThrow(userId, addressId);
+
+    const updateAddress = this.prisma.address.update({
+      select: ADDRESS_SELECT,
+      where: { id: addressId },
+      data: {
+        countryId: dto.countryId,
+        label: dto.label,
+        street: dto.street,
+        city: dto.city,
+        state: dto.state,
+        postalCode: dto.postalCode,
+        reference: dto.reference,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
+        isDefault: dto.isDefault,
+      },
+    });
+
+    if (!dto.isDefault) {
+      return updateAddress;
+    }
+
+    const [, address] = await this.prisma.$transaction([
+      this.prisma.address.updateMany({
+        where: {
+          userId,
+          id: { not: addressId },
+          deletedAt: null,
+        },
+        data: {
+          isDefault: false,
+        },
+      }),
+      updateAddress,
+    ]);
+
+    return address;
+  }
+
+  async setDefaultAddress(userId: string, addressId: string) {
+    await this.findAddressOrThrow(userId, addressId);
+
+    const [, address] = await this.prisma.$transaction([
+      this.prisma.address.updateMany({
+        where: {
+          userId,
+          deletedAt: null,
+        },
+        data: {
+          isDefault: false,
+        },
+      }),
+      this.prisma.address.update({
+        select: ADDRESS_SELECT,
+        where: { id: addressId },
+        data: {
+          isDefault: true,
+        },
+      }),
+    ]);
+
+    return address;
+  }
+
+  async removeMyAddress(userId: string, addressId: string) {
+    const address = await this.findAddressOrThrow(userId, addressId);
+    const removedAddress = await this.prisma.address.update({
+      select: ADDRESS_SELECT,
+      where: { id: addressId },
+      data: {
+        deletedAt: new Date(),
+        isDefault: false,
+      },
+    });
+
+    if (!address.isDefault) {
+      return removedAddress;
+    }
+
+    const nextAddress = await this.prisma.address.findFirst({
+      where: {
+        userId,
+        id: { not: addressId },
+        deletedAt: null,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (nextAddress) {
+      await this.prisma.address.update({
+        where: { id: nextAddress.id },
+        data: {
+          isDefault: true,
+        },
+      });
+    }
+
+    return removedAddress;
+  }
+
   private async ensureEmailAndPhoneAreAvailable(
     email?: string,
     phone?: string,
@@ -158,5 +346,22 @@ export class UsersService {
     }
 
     throw new ConflictException('Phone is already in use');
+  }
+
+  private async findAddressOrThrow(userId: string, addressId: string) {
+    const address = await this.prisma.address.findFirst({
+      select: ADDRESS_SELECT,
+      where: {
+        id: addressId,
+        userId,
+        deletedAt: null,
+      },
+    });
+
+    if (!address) {
+      throw new NotFoundException('Address not found');
+    }
+
+    return address;
   }
 }

@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -8,6 +16,7 @@ import type { AuthenticatedUser } from '../auth/types/authenticated-user';
 import { CreateMerchantCompanyDto } from './dto/create-merchant-company.dto';
 import { CreateMerchantProfileDto } from './dto/create-merchant-profile.dto';
 import { CreateStoreDto } from './dto/create-store.dto';
+import { UpdateStoreStatusDto } from './dto/update-store-status.dto';
 import { StoresService } from './stores.service';
 
 @Controller('stores')
@@ -24,6 +33,20 @@ export class StoresController {
   @Get('my')
   findMyStores(@CurrentUser() user: AuthenticatedUser) {
     return this.storesService.findMyStores(user.id);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Get('admin')
+  findAllForAdmin() {
+    return this.storesService.findAllForAdmin();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Get('admin/pending')
+  findPendingStoresForAdmin() {
+    return this.storesService.findPendingStoresForAdmin();
   }
 
   @Get(':slug')
@@ -59,5 +82,16 @@ export class StoresController {
     @Body() dto: CreateStoreDto,
   ) {
     return this.storesService.createStore(user.id, dto);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Patch(':id/status')
+  updateStoreStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateStoreStatusDto,
+  ) {
+    return this.storesService.updateStoreStatus(user, id, dto);
   }
 }

@@ -1,7 +1,7 @@
 import { Type } from 'class-transformer';
 import { IsBoolean, IsNumber, IsOptional, IsString } from 'class-validator';
 
-export class CreateAddressDto {
+export class UpdateAddressDto {
   @IsOptional()
   @IsString()
   countryId?: string;
@@ -10,11 +10,13 @@ export class CreateAddressDto {
   @IsString()
   label?: string;
 
+  @IsOptional()
   @IsString()
-  street!: string;
+  street?: string;
 
+  @IsOptional()
   @IsString()
-  city!: string;
+  city?: string;
 
   @IsOptional()
   @IsString()

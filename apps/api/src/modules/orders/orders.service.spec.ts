@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import {
+  CancellationReason,
   DeliveryType,
   OrderStatus,
   PaymentMethod,
@@ -16,6 +17,16 @@ describe('OrdersService', () => {
       findMany: jest.Mock;
       findFirst: jest.Mock;
       create: jest.Mock;
+      update: jest.Mock;
+    };
+    orderStatusHistory: {
+      create: jest.Mock;
+    };
+    payment: {
+      update: jest.Mock;
+    };
+    address: {
+      findFirst: jest.Mock;
     };
     cart: {
       findFirst: jest.Mock;
@@ -85,6 +96,16 @@ describe('OrdersService', () => {
         findMany: jest.fn(),
         findFirst: jest.fn(),
         create: jest.fn().mockReturnValue('order-create'),
+        update: jest.fn().mockReturnValue('order-update'),
+      },
+      orderStatusHistory: {
+        create: jest.fn().mockReturnValue('status-history-create'),
+      },
+      payment: {
+        update: jest.fn(),
+      },
+      address: {
+        findFirst: jest.fn(),
       },
       cart: {
         findFirst: jest.fn(),
@@ -228,5 +249,161 @@ describe('OrdersService', () => {
     await expect(
       service.findMyOrder('user-1', 'missing-order'),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('updates an order status with history for the owning merchant', async () => {
+    const confirmedOrder = {
+      ...order,
+      status: OrderStatus.CONFIRMED,
+      confirmedAt: new Date('2026-07-09T00:00:00.000Z'),
+    };
+    prisma.order.findFirst.mockResolvedValue({
+      ...order,
+      confirmedAt: null,
+    });
+    prisma.$transaction.mockResolvedValue([confirmedOrder]);
+
+    const result = await service.updateOrderStatus(
+      {
+        id: 'merchant-user-1',
+        email: 'merchant@example.com',
+        role: 'MERCHANT',
+      },
+      'order-1',
+      {
+        status: OrderStatus.CONFIRMED,
+        note: 'Cliente confirmo por WhatsApp',
+      },
+    );
+
+    expect(prisma.order.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'order-1' },
+        data: expect.objectContaining({
+          status: OrderStatus.CONFIRMED,
+          confirmedAt: expect.any(Date),
+        }),
+      }),
+    );
+    expect(prisma.orderStatusHistory.create).toHaveBeenCalledWith({
+      data: {
+        orderId: 'order-1',
+        status: OrderStatus.CONFIRMED,
+        note: 'Cliente confirmo por WhatsApp',
+        changedBy: 'merchant-user-1',
+      },
+    });
+    expect(result.status).toBe(OrderStatus.CONFIRMED);
+  });
+
+  it('requires a cancellation reason when cancelling an order', async () => {
+    prisma.order.findFirst.mockResolvedValue(order);
+
+    await expect(
+      service.updateOrderStatus(
+        {
+          id: 'merchant-user-1',
+          email: 'merchant@example.com',
+          role: 'MERCHANT',
+        },
+        'order-1',
+        {
+          status: OrderStatus.CANCELLED,
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('marks a pending payment as paid', async () => {
+    prisma.order.findFirst.mockResolvedValueOnce(order).mockResolvedValueOnce({
+      ...order,
+      payment: {
+        ...order.payment,
+        method: PaymentMethod.BANK_TRANSFER,
+        status: PaymentStatus.PAID,
+      },
+    });
+    prisma.payment.update.mockResolvedValue({
+      ...order.payment,
+      status: PaymentStatus.PAID,
+    });
+
+    const result = await service.updateOrderPayment(
+      {
+        id: 'merchant-user-1',
+        email: 'merchant@example.com',
+        role: 'MERCHANT',
+      },
+      'order-1',
+      {
+        status: PaymentStatus.PAID,
+        method: PaymentMethod.BANK_TRANSFER,
+        providerPaymentId: 'TRANSFER-123',
+      },
+    );
+
+    expect(prisma.payment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          orderId: 'order-1',
+        },
+        data: expect.objectContaining({
+          status: PaymentStatus.PAID,
+          method: PaymentMethod.BANK_TRANSFER,
+          providerPaymentId: 'TRANSFER-123',
+          paidAt: expect.any(Date),
+        }),
+      }),
+    );
+    expect(result.payment?.status).toBe(PaymentStatus.PAID);
+  });
+
+  it('rejects partial refunds without an amount', async () => {
+    prisma.order.findFirst.mockResolvedValue({
+      ...order,
+      payment: {
+        ...order.payment,
+        status: PaymentStatus.PAID,
+      },
+    });
+
+    await expect(
+      service.updateOrderPayment(
+        {
+          id: 'admin-1',
+          email: 'admin@example.com',
+          role: 'ADMIN',
+        },
+        'order-1',
+        {
+          status: PaymentStatus.PARTIALLY_REFUNDED,
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('allows cancelling with a cancellation reason', async () => {
+    const cancelledOrder = {
+      ...order,
+      status: OrderStatus.CANCELLED,
+      cancellationReason: CancellationReason.CUSTOMER_REQUEST,
+    };
+    prisma.order.findFirst.mockResolvedValue(order);
+    prisma.$transaction.mockResolvedValue([cancelledOrder]);
+
+    const result = await service.updateOrderStatus(
+      {
+        id: 'admin-1',
+        email: 'admin@example.com',
+        role: 'ADMIN',
+      },
+      'order-1',
+      {
+        status: OrderStatus.CANCELLED,
+        cancellationReason: CancellationReason.CUSTOMER_REQUEST,
+      },
+    );
+
+    expect(result.status).toBe(OrderStatus.CANCELLED);
   });
 });

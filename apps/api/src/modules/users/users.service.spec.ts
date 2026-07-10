@@ -17,6 +17,15 @@ describe('UsersService', () => {
       findFirst: jest.Mock;
       update: jest.Mock;
     };
+    address: {
+      count: jest.Mock;
+      create: jest.Mock;
+      findMany: jest.Mock;
+      findFirst: jest.Mock;
+      update: jest.Mock;
+      updateMany: jest.Mock;
+    };
+    $transaction: jest.Mock;
   };
 
   const safeUser = {
@@ -43,6 +52,15 @@ describe('UsersService', () => {
         findFirst: jest.fn(),
         update: jest.fn(),
       },
+      address: {
+        count: jest.fn(),
+        create: jest.fn(),
+        findMany: jest.fn(),
+        findFirst: jest.fn(),
+        update: jest.fn(),
+        updateMany: jest.fn(),
+      },
+      $transaction: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -129,5 +147,47 @@ describe('UsersService', () => {
       }),
     );
     expect(result.deletedAt).toBeInstanceOf(Date);
+  });
+
+  it('creates the first customer address as default', async () => {
+    const address = {
+      id: 'address-1',
+      userId: 'user-1',
+      street: 'Av. Principal',
+      city: 'Guayaquil',
+      isDefault: true,
+    };
+    prisma.address.count.mockResolvedValue(0);
+    prisma.address.updateMany.mockReturnValue('unset-defaults');
+    prisma.address.create.mockReturnValue('address-create');
+    prisma.$transaction.mockResolvedValue(['unset-defaults', address]);
+
+    const result = await service.createMyAddress('user-1', {
+      street: 'Av. Principal',
+      city: 'Guayaquil',
+    });
+
+    expect(prisma.address.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          userId: 'user-1',
+          deletedAt: null,
+        },
+        data: {
+          isDefault: false,
+        },
+      }),
+    );
+    expect(prisma.address.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          userId: 'user-1',
+          street: 'Av. Principal',
+          city: 'Guayaquil',
+          isDefault: true,
+        }),
+      }),
+    );
+    expect(result).toEqual(address);
   });
 });

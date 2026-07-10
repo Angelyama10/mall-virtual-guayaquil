@@ -1,0 +1,784 @@
+{
+  "info": {
+    "_postman_id": "9b4daeed-8b60-4a41-9c42-7cc70e770000",
+    "name": "Mall Virtual",
+    "description": "Coleccion local para probar el backend NestJS de Mall Virtual. Selecciona el environment mall_virtual_local antes de ejecutar los requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 Health",
+      "item": [
+        {
+          "name": "GET Root",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API responds', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/"
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Auth",
+      "item": [
+        {
+          "name": "POST Register Merchant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.accessToken) pm.environment.set('merchantToken', json.accessToken);",
+                  "if (json.user?.id) pm.environment.set('merchantUserId', json.user.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ventas@zapateriamalecon.com\",\n  \"phone\": \"+593987654321\",\n  \"plainPassword\": \"Password123\",\n  \"role\": \"MERCHANT\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "POST Login Merchant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.accessToken) pm.environment.set('merchantToken', json.accessToken);",
+                  "if (json.user?.id) pm.environment.set('merchantUserId', json.user.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ventas@zapateriamalecon.com\",\n  \"password\": \"Password123\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "POST Register Customer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.accessToken) pm.environment.set('customerToken', json.accessToken);",
+                  "if (json.user?.id) pm.environment.set('customerUserId', json.user.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"maria.zambrano@test.com\",\n  \"phone\": \"+593991112233\",\n  \"plainPassword\": \"Password123\",\n  \"role\": \"CUSTOMER\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "POST Login Customer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.accessToken) pm.environment.set('customerToken', json.accessToken);",
+                  "if (json.user?.id) pm.environment.set('customerUserId', json.user.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"maria.zambrano@test.com\",\n  \"password\": \"Password123\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "POST Register Admin Seed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.user?.id) pm.environment.set('adminUserId', json.user.id);",
+                  "if (json.accessToken) pm.environment.set('adminToken', json.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@test.com\",\n  \"plainPassword\": \"Password123\",\n  \"role\": \"CUSTOMER\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "POST Login Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.accessToken) pm.environment.set('adminToken', json.accessToken);",
+                  "if (json.user?.id) pm.environment.set('adminUserId', json.user.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@test.com\",\n  \"password\": \"Password123\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Merchant Setup",
+      "item": [
+        {
+          "name": "POST Create Merchant Profile",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{merchantToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contactEmail\": \"ventas@zapateriamalecon.com\",\n  \"contactPhone\": \"+593987654321\",\n  \"taxId\": \"0992857364001\",\n  \"taxIdCountry\": \"EC\"\n}"
+            },
+            "url": "{{baseUrl}}/stores/merchant-profile"
+          }
+        },
+        {
+          "name": "POST Create Company",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.id) pm.environment.set('companyId', json.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{merchantToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Zapatería Malecón\",\n  \"description\": \"Tienda de calzado urbano y casual en Guayaquil\",\n  \"website\": \"https://zapateriamalecon.example.com\"\n}"
+            },
+            "url": "{{baseUrl}}/stores/companies"
+          }
+        },
+        {
+          "name": "POST Create Store",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.id) pm.environment.set('storeId', json.id);",
+                  "if (json.slug) pm.environment.set('storeSlug', json.slug);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{merchantToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyId\": \"{{companyId}}\",\n  \"name\": \"Zapatería Malecón Centro\",\n  \"openingHours\": {\n    \"monday\": \"09:00-19:00\",\n    \"tuesday\": \"09:00-19:00\",\n    \"wednesday\": \"09:00-19:00\",\n    \"thursday\": \"09:00-19:00\",\n    \"friday\": \"09:00-19:00\",\n    \"saturday\": \"10:00-17:00\"\n  },\n  \"address\": {\n    \"street\": \"Malecón Simón Bolívar y 9 de Octubre\",\n    \"city\": \"Guayaquil\",\n    \"state\": \"Guayas\",\n    \"reference\": \"Frente al río, local 12\"\n  },\n  \"settings\": {\n    \"whatsappNumber\": \"+593987654321\",\n    \"instagramUrl\": \"https://instagram.com/zapateriamalecon\",\n    \"acceptsWhatsapp\": true,\n    \"acceptsCash\": true,\n    \"acceptsCard\": false,\n    \"acceptsOnlinePayment\": false,\n    \"deliveryRadiusKm\": 8,\n    \"averagePreparationMinutes\": 25,\n    \"minimumOrderAmount\": 15,\n    \"freeDeliveryFromAmount\": 80\n  }\n}"
+            },
+            "url": "{{baseUrl}}/stores"
+          }
+        },
+        {
+          "name": "GET My Stores",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{merchantToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/stores/my"
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Categories",
+      "item": [
+        {
+          "name": "GET Public Categories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/categories"
+          }
+        },
+        {
+          "name": "POST Create Category Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.id) pm.environment.set('categoryId', json.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Calzado\",\n  \"description\": \"Zapatos, zapatillas y accesorios de calzado\",\n  \"sortOrder\": 1\n}"
+            },
+            "url": "{{baseUrl}}/categories"
+          }
+        },
+        {
+          "name": "GET Admin Categories",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/categories/admin"
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Store Admin",
+      "item": [
+        {
+          "name": "GET Pending Stores Admin",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/stores/admin/pending"
+          }
+        },
+        {
+          "name": "PATCH Approve Store Admin",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACTIVE\",\n  \"note\": \"Tienda aprobada para pruebas reales del MVP\"\n}"
+            },
+            "url": "{{baseUrl}}/stores/{{storeId}}/status"
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Products",
+      "item": [
+        {
+          "name": "POST Create Product",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.id) pm.environment.set('productId', json.id);",
+                  "if (json.slug) pm.environment.set('productSlug', json.slug);",
+                  "if (json.variants?.[0]?.id) pm.environment.set('variantId', json.variants[0].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{merchantToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"{{storeId}}\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"name\": \"Zapatillas Urbanas Negras Talla 39 {{$timestamp}}\",\n  \"description\": \"Zapatillas urbanas color negro, suela antideslizante, ideales para uso diario.\",\n  \"basePrice\": 49.99,\n  \"compareAtPrice\": 59.99,\n  \"sku\": \"ZAP-URB-NEG-39-{{$timestamp}}\",\n  \"weightGrams\": 850,\n  \"status\": \"ACTIVE\",\n  \"isFeatured\": true,\n  \"isAvailable\": true,\n  \"initialStock\": 12,\n  \"images\": [\n    {\n      \"url\": \"https://example.com/zapatillas-urbanas-negras.jpg\",\n      \"altText\": \"Zapatillas urbanas negras\"\n    }\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/products"
+          }
+        },
+        {
+          "name": "GET Public Products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/products"
+          }
+        },
+        {
+          "name": "GET Public Product By Slug",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/products/{{productSlug}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Customer Addresses",
+      "item": [
+        {
+          "name": "POST Create My Address",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.id) pm.environment.set('addressId', json.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Casa\",\n  \"street\": \"Urdesa Central, Calle Primera 123\",\n  \"city\": \"Guayaquil\",\n  \"state\": \"Guayas\",\n  \"reference\": \"Cerca del parque, casa blanca con portón negro\",\n  \"latitude\": -2.170998,\n  \"longitude\": -79.922359,\n  \"isDefault\": true\n}"
+            },
+            "url": "{{baseUrl}}/users/me/addresses"
+          }
+        },
+        {
+          "name": "GET My Addresses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/users/me/addresses"
+          }
+        },
+        {
+          "name": "PATCH Set Default Address",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/users/me/addresses/{{addressId}}/default"
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Cart",
+      "item": [
+        {
+          "name": "POST Add Item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.items?.[0]?.id) pm.environment.set('cartItemId', json.items[0].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 1\n}"
+            },
+            "url": "{{baseUrl}}/cart/items"
+          }
+        },
+        {
+          "name": "GET My Cart",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/cart"
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Orders",
+      "item": [
+        {
+          "name": "POST Checkout With Address",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.id) pm.environment.set('orderId', json.id);",
+                  "if (json.whatsappCheckoutUrl) pm.environment.set('whatsappCheckoutUrl', json.whatsappCheckoutUrl);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"addressId\": \"{{addressId}}\",\n  \"deliveryType\": \"HOME_DELIVERY\",\n  \"notes\": \"Cliente María Zambrano. Confirmar por WhatsApp antes de enviar.\"\n}"
+            },
+            "url": "{{baseUrl}}/orders/checkout"
+          }
+        },
+        {
+          "name": "GET My Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/orders"
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 Order Management",
+      "item": [
+        {
+          "name": "GET Manage Orders Merchant",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{merchantToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/orders/manage"
+          }
+        },
+        {
+          "name": "PATCH Confirm Order",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{merchantToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"CONFIRMED\",\n  \"note\": \"Cliente confirmó el pedido por WhatsApp\"\n}"
+            },
+            "url": "{{baseUrl}}/orders/{{orderId}}/status"
+          }
+        },
+        {
+          "name": "PATCH Mark Payment Paid",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{merchantToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"PAID\",\n  \"method\": \"BANK_TRANSFER\",\n  \"providerPaymentId\": \"TRF-MARIA-ZAMBRANO-001\",\n  \"metadata\": {\n    \"bank\": \"Banco Pichincha\",\n    \"receiptNumber\": \"BP-20260709-001\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/orders/{{orderId}}/payment"
+          }
+        },
+        {
+          "name": "PATCH Processing Order",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{merchantToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"PROCESSING\",\n  \"note\": \"Pedido en preparación\"\n}"
+            },
+            "url": "{{baseUrl}}/orders/{{orderId}}/status"
+          }
+        },
+        {
+          "name": "PATCH On The Way Order",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{merchantToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ON_THE_WAY\",\n  \"note\": \"Pedido salió a entrega\"\n}"
+            },
+            "url": "{{baseUrl}}/orders/{{orderId}}/status"
+          }
+        },
+        {
+          "name": "PATCH Delivered Order",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{merchantToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"DELIVERED\",\n  \"note\": \"Cliente recibió el pedido conforme\"\n}"
+            },
+            "url": "{{baseUrl}}/orders/{{orderId}}/status"
+          }
+        },
+        {
+          "name": "GET Manage Order Detail Merchant",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{merchantToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/orders/manage/{{orderId}}"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -5,9 +5,11 @@ import {
 } from '@nestjs/common';
 import { Prisma, StoreStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import type { AuthenticatedUser } from '../auth/types/authenticated-user';
 import { CreateMerchantCompanyDto } from './dto/create-merchant-company.dto';
 import { CreateMerchantProfileDto } from './dto/create-merchant-profile.dto';
 import { CreateStoreDto } from './dto/create-store.dto';
+import { UpdateStoreStatusDto } from './dto/update-store-status.dto';
 
 const MERCHANT_PROFILE_SELECT = {
   id: true,
@@ -175,6 +177,81 @@ export class StoresService {
     });
   }
 
+  findAllForAdmin() {
+    return this.prisma.store.findMany({
+      select: STORE_SELECT,
+      where: {
+        deletedAt: null,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
+
+  findPendingStoresForAdmin() {
+    return this.prisma.store.findMany({
+      select: STORE_SELECT,
+      where: {
+        status: StoreStatus.PENDING_REVIEW,
+        deletedAt: null,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+  }
+
+  async updateStoreStatus(
+    actor: AuthenticatedUser,
+    storeId: string,
+    dto: UpdateStoreStatusDto,
+  ) {
+    const store = await this.findStoreOrThrow(storeId);
+
+    const closingStatuses: StoreStatus[] = [
+      StoreStatus.PAUSED,
+      StoreStatus.REJECTED,
+      StoreStatus.SUSPENDED,
+    ];
+    const shouldCloseStore = closingStatuses.includes(dto.status);
+
+    const [updatedStore] = await this.prisma.$transaction([
+      this.prisma.store.update({
+        select: STORE_SELECT,
+        where: { id: storeId },
+        data: {
+          status: dto.status,
+          isOpen: shouldCloseStore ? false : undefined,
+        },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          userId: actor.id,
+          userRole: actor.role,
+          action: 'STORE_STATUS_UPDATED',
+          entityType: 'Store',
+          entityId: storeId,
+          oldValue: {
+            status: store.status,
+            isOpen: store.isOpen,
+          },
+          newValue: {
+            status: dto.status,
+            isOpen: shouldCloseStore ? false : store.isOpen,
+          },
+          metadata: dto.note
+            ? {
+                note: dto.note,
+              }
+            : undefined,
+        },
+      }),
+    ]);
+
+    return updatedStore;
+  }
+
   async findPublicStoreBySlug(slug: string) {
     const store = await this.prisma.store.findFirst({
       select: STORE_SELECT,
@@ -230,6 +307,21 @@ export class StoresService {
     }
 
     return merchantProfile;
+  }
+
+  private async findStoreOrThrow(storeId: string) {
+    const store = await this.prisma.store.findFirst({
+      where: {
+        id: storeId,
+        deletedAt: null,
+      },
+    });
+
+    if (!store) {
+      throw new NotFoundException('Store not found');
+    }
+
+    return store;
   }
 
   private async findMerchantCompanyOrThrow(userId: string, companyId: string) {
